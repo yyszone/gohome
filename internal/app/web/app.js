@@ -1,13 +1,26 @@
-const state = { devices: [], accounts: [], discovery: [], logs: [], page: 'overview', xiaomiChallengeId: '', xiaomiChallengeType: '' };
+const state = { devices: [], accounts: [], discovery: [], logs: [], page: 'overview', xiaomiChallengeId: '', xiaomiChallengeType: '', xiaomiVerifyFlag: 0 };
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 // Older data files or empty Go slices may decode as null; keep UI collections safe.
 const asArray = value => Array.isArray(value) ? value : [];
 
+function showLoginScreen(message='') {
+  document.body.classList.remove('authenticated');
+  $('#login-screen').hidden = false;
+  if (message) {
+    $('#login-error').textContent = message;
+    $('#login-error').hidden = false;
+  }
+}
+function enterApplication() {
+  $('#login-screen').hidden = true;
+  document.body.classList.add('authenticated');
+}
 async function api(path, options={}) {
-  const opts = { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } };
+  const opts = { ...options, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } };
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && path !== '/api/auth/login') showLoginScreen(data.error || '登录状态已失效，请重新登录');
   if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
   return data;
 }
@@ -43,21 +56,15 @@ function renderEnergyMetrics(energy) {
     ['本月用电', energy.monthKWh, 'kWh', 3],
     ['累计用电', energy.totalKWh, 'kWh', 3],
   ].filter(([, value]) => value !== null && value !== undefined && Number.isFinite(Number(value)));
-  const present = new Set(metrics.map(([label]) => label));
-  // Meter-capable devices should always expose daily and weekly slots. Missing
-  // cloud data remains visibly unavailable instead of silently disappearing.
-  if (energy.supported) {
-    for (const [label, field] of [['今日用电','todayKWh'], ['本周用电','weekKWh']]) {
-      if (!present.has(label)) metrics.push([label, energy[field], 'kWh', 3]);
-    }
-  }
   const source = energy.source ? `<span>${esc(energy.source)}</span>` : '';
   const updated = energy.updatedAt ? `<span>更新 ${fmtTime(energy.updatedAt)}</span>` : '';
-  if (!metrics.length) {
-    if (!energy.supported) return '';
-    return `<section class="energy-panel energy-empty"><div class="energy-head"><strong>电量统计</strong><span class="energy-badge">支持计量</span></div><p>设备支持计量，等待设备或云端返回数据。</p><div class="energy-grid"><div class="energy-metric"><small>今日用电</small><strong>— <em>kWh</em></strong></div><div class="energy-metric"><small>本周用电</small><strong>— <em>kWh</em></strong></div></div>${source}${updated}</section>`;
-  }
-  return `<section class="energy-panel"><div class="energy-head"><strong>用电统计</strong><span class="energy-badge">${source || '计量数据'}</span></div><div class="energy-grid">${metrics.map(([label,value,unit,digits]) => `<div class="energy-metric ${label === '今日用电' || label === '本周用电' ? 'energy-period-metric' : ''}"><small>${label}</small><strong>${value === null || value === undefined ? '—' : formatMetric(value,digits)} <em>${unit}</em></strong></div>`).join('')}</div><div class="energy-foot">${updated}<span>日统计按本机时区 · 周统计从周一累计</span></div></section>`;
+  // Do not display empty placeholders. A meter capability alone is not a
+  // reading; only values returned by the provider or locally accumulated from
+  // actual samples are shown. Numeric zero remains a valid reading.
+  if (!metrics.length) return '';
+  const hasPeriodMetric = metrics.some(([label]) => label === '今日用电' || label === '本周用电');
+  const periodHint = hasPeriodMetric ? '<span>日统计按本机时区 · 周统计从周一累计</span>' : '';
+  return `<section class="energy-panel"><div class="energy-head"><strong>用电统计</strong><span class="energy-badge">${source || '计量数据'}</span></div><div class="energy-grid">${metrics.map(([label,value,unit,digits]) => { const hint = label === '今日用电' ? energy.todaySource : label === '本周用电' ? energy.weekSource : ''; return `<div class="energy-metric ${label === '今日用电' || label === '本周用电' ? 'energy-period-metric' : ''}"><small>${label}</small><strong>${formatMetric(value,digits)} <em>${unit}</em></strong>${hint ? `<small class="energy-source-hint">${esc(hint)}</small>` : ''}</div>`; }).join('')}</div>${updated || periodHint ? `<div class="energy-foot">${updated}${periodHint}</div>` : ''}</section>`;
 }
 
 function renderDeviceAttributes(d) {
@@ -71,17 +78,45 @@ function deviceFallbackSummary(d) {
   const label = ({'摄像头':'摄像头已接入','音箱':'音箱已连接','温湿度计':'环境传感器在线','传感器':'传感器在线','插座':'插座已接入','灯光':'灯具已接入','空调':'空调已接入','扫地机器人':'清洁设备已接入','影音设备':'影音设备已接入','洗碗机':'家电已接入'})[category] || '设备已接入';
   return d.online ? label : `${category}离线`;
 }
+function renderDeviceHoverActions(d) {
+  return `<div class="device-hover-actions" aria-label="设备操作"><button type="button" class="device-api-copy" data-copy-device-api="${esc(d.id)}" title="复制设备 API"><span aria-hidden="true">⧉</span><span>复制 API</span></button><button type="button" class="device-delete" data-delete-device="${esc(d.id)}" title="删除设备" aria-label="删除设备"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6 2.5h4M4.5 4.5l.6 9h5.8l.6-9M6.5 6.5v5M9.5 6.5v5"/></svg></button></div>`;
+}
+function overviewEnergy(d) {
+  const energy = d.energy;
+  if (!energy || !energy.supported) return '';
+  const items = [
+    ['实时功率', energy.powerW, 'W', 1, ''],
+    ['今日用电', energy.todayKWh, 'kWh', 3, energy.todaySource || ''],
+    ['本周用电', energy.weekKWh, 'kWh', 3, energy.weekSource || ''],
+  ].filter(([, value]) => value !== null && value !== undefined && Number.isFinite(Number(value)));
+  if (!items.length) return '';
+  return `<div class="overview-energy">${items.map(([label,value,unit,digits,source]) => `<div><small>${label}</small><strong>${formatMetric(value,digits)} <em>${unit}</em></strong>${source ? `<small class="overview-energy-source">${esc(source)}</small>` : ''}</div>`).join('')}</div><div class="overview-energy-updated">计量更新 ${fmtTime(energy.updatedAt)}</div>`;
+}
 function renderDeviceCard(d) {
   const [cls, icon] = glyph(d.category);
   const online = d.online ? '<span class="device-status">● 在线</span>' : '<span class="device-status offline">● 离线</span>';
   const channels = asArray(d.channels);
-  const hasPower = d.power !== null && d.power !== undefined;
+  const controls = asArray(d.controls).filter(c => c && ((c.kind === 'property' && miotControlLabel(c.name)) || (c.kind === 'action' && isSafeVisibleMIoTAction(c))));
+  const controlCount = controls.length + channels.length + (d.canControl && d.power !== null && d.power !== undefined && !channels.length ? 1 : 0);
+  const hasControls = controlCount > 0 && d.canControl || controls.length > 0;
   const onCount = channels.filter(ch => ch.power === true).length;
   const summary = channels.length > 1
-    ? `<strong>${onCount}/${channels.length} 路开启</strong>`
-    : hasPower ? `<strong>${d.power ? '已开启' : '已关闭'}</strong>` : `<strong>${esc(d.value || deviceFallbackSummary(d))}</strong>`;
+    ? `${onCount}/${channels.length} 路开启`
+    : d.power !== null && d.power !== undefined ? (d.power ? '已开启' : '已关闭') : (d.value || deviceFallbackSummary(d));
   const control = renderDeviceControls(d);
-  return `<article class="device-card"><div class="device-card-top"><div class="device-glyph ${cls}">${icon}</div>${online}</div><h3 title="${esc(d.name)}">${esc(d.name)}</h3><div class="device-sub"><span>${esc(d.brand)}</span><span class="sep">·</span><span>${esc(d.room || '未分区')}</span><span class="device-category-tag">${esc(d.category || '其他')}</span></div>${renderDeviceAttributes(d)}${renderEnergyMetrics(d.energy)}<div class="device-card-bottom ${channels.length > 1 ? 'has-channels' : ''}"><div class="device-state">${summary}</div>${control}<button type="button" class="device-api-copy" data-copy-device-api="${esc(d.id)}" title="复制此设备的 API 请求示例">复制 API</button></div></article>`;
+  const controlHTML = hasControls && control
+    ? `<details class="overview-control-details"><summary><strong>设备控制</strong><span>${controlCount} 项可用</span></summary><div class="overview-control-body">${control}</div></details>`
+    : (d.energy?.supported || asArray(d.attributes).length) ? '<span class="overview-readonly">实时监测 · 只读设备</span>' : '';
+  const attrs = asArray(d.attributes).filter(a => a && a.label && a.value !== undefined && a.value !== null).slice(0, 2);
+  return `<article class="device-card ${controlCount >= 5 ? 'has-rich-controls' : ''}">
+    <div class="overview-device-head">
+      <div class="overview-device-identity"><div class="device-glyph ${cls}">${icon}</div><div class="overview-device-title"><h3 title="${esc(d.name)}">${esc(d.name)}</h3><small>${esc(deviceBrandGroup(d))} · ${esc(d.room || '未分区')}</small></div></div>
+      <div class="overview-device-tools">${online}${renderDeviceHoverActions(d)}</div>
+    </div>
+    <div class="overview-device-meta"><span>${esc(d.category || '其他')}</span><span>${esc(summary)}</span></div>
+    ${attrs.length ? `<div class="overview-attributes">${attrs.map(a => `<span>${esc(a.label)} <b>${esc(a.value)}${esc(a.unit || '')}</b></span>`).join('')}</div>` : ''}
+    ${overviewEnergy(d)}${controlHTML}
+  </article>`;
 }
 function deviceBrandGroup(d) {
   if (d.providerGroup) return d.providerGroup;
@@ -188,42 +223,49 @@ function renderDeviceControls(d) {
 function buildDeviceAPIText(d) {
   const id = String(d.id || '');
   const base = 'http://<GoHome主机地址>:17880';
-  const auth = "'<用户名>:<密码>'";
-  const lines = [`# ${d.name || '设备'} API`, `# Device ID: ${id}`, `# 需要将 <GoHome主机地址>、用户名和密码替换成自己的值。`, ''];
+  const jar = 'gohome-cookie.txt';
+  const lines = [
+    `# ${d.name || '设备'} API`,
+    `# Device ID: ${id}`,
+    `# 首次使用时执行登录命令；Cookie 会保存到本地文件，后续请求复用。`,
+    `AUTH_JAR=${jar}`,
+    `curl -sS -c "$AUTH_JAR" -b "$AUTH_JAR" -X POST '${base}/api/auth/login' -H 'Content-Type: application/json' -d '{"username":"admin","password":"123456"}'`,
+    ''
+  ];
   lines.push('# 查询设备详情');
-  lines.push(`curl -u ${auth} '${base}/api/v1/devices/${encodeURIComponent(id)}'`);
+  lines.push(`curl -b "$AUTH_JAR" '${base}/api/v1/devices/${encodeURIComponent(id)}'`);
   if (d.protocol === 'xiaomi-cloud' && asArray(d.controls).length) {
     const controls = asArray(d.controls);
     const power = controls.find(c => c.kind === 'property' && c.name === '电源开关' && ['bool','boolean'].includes(String(c.format || '').toLowerCase()));
     if (power) {
       lines.push('', '# 电源开关');
-      lines.push(`curl -X POST -u ${auth} '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '{"command":"turn_on"}'`);
-      lines.push(`curl -X POST -u ${auth} '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '{"command":"turn_off"}'`);
+      lines.push(`curl -X POST -b "$AUTH_JAR" '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '{"command":"turn_on"}'`);
+      lines.push(`curl -X POST -b "$AUTH_JAR" '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '{"command":"turn_off"}'`);
     }
     for (const c of controls.filter(x => x.kind === 'property')) {
       const format = String(c.format || '').toLowerCase();
       let example = c.options?.length ? JSON.stringify(c.options[0].value) : ['bool','boolean'].includes(format) ? 'true' : /^(u?int|float|double)/i.test(format) ? '0' : '""';
       lines.push('', `# 属性：${c.name}（SIID=${c.siid} PIID=${c.piid} FORMAT=${c.format || 'unknown'}）`);
       lines.push(`# 将 value 替换成设备规格允许的值`);
-      lines.push(`curl -X POST -u ${auth} '${base}/api/v1/devices/${encodeURIComponent(id)}/property' -H 'Content-Type: application/json' -d '${JSON.stringify({siid:c.siid,piid:c.piid,value:JSON.parse(example)})}'`);
+      lines.push(`curl -X POST -b "$AUTH_JAR" '${base}/api/v1/devices/${encodeURIComponent(id)}/property' -H 'Content-Type: application/json' -d '${JSON.stringify({siid:c.siid,piid:c.piid,value:JSON.parse(example)})}'`);
     }
     for (const c of controls.filter(x => x.kind === 'action')) {
       const values = asArray(c.inputs).map(input => input.options?.length ? input.options[0].value : /^(u?int|float|double)/i.test(input.format || '') ? 0 : /^(bool|boolean)$/i.test(input.format || '') ? false : '');
       lines.push('', `# 动作：${c.name}（SIID=${c.siid} AIID=${c.aiid}，参数数量=${values.length}）`);
       lines.push(`# ${c.description || '执行 MIoT 动作'}`);
-      lines.push(`curl -X POST -u ${auth} '${base}/api/v1/devices/${encodeURIComponent(id)}/action' -H 'Content-Type: application/json' -d '${JSON.stringify({siid:c.siid,aiid:c.aiid,params:values})}'`);
+      lines.push(`curl -X POST -b "$AUTH_JAR" '${base}/api/v1/devices/${encodeURIComponent(id)}/action' -H 'Content-Type: application/json' -d '${JSON.stringify({siid:c.siid,aiid:c.aiid,params:values})}'`);
     }
   } else if (d.protocol === 'ewelink-cloud' && d.canControl) {
     lines.push('', '# 开关控制');
     if (asArray(d.channels).length > 1) {
       for (const channel of asArray(d.channels)) {
         lines.push(`# ${channel.name || `通道 ${Number(channel.outlet)+1}`}`);
-        lines.push(`curl -X POST -u ${auth} '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '${JSON.stringify({command:'turn_on',channel:Number(channel.outlet)})}'`);
-        lines.push(`curl -X POST -u ${auth} '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '${JSON.stringify({command:'turn_off',channel:Number(channel.outlet)})}'`);
+        lines.push(`curl -X POST -b "$AUTH_JAR" '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '${JSON.stringify({command:'turn_on',channel:Number(channel.outlet)})}'`);
+        lines.push(`curl -X POST -b "$AUTH_JAR" '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '${JSON.stringify({command:'turn_off',channel:Number(channel.outlet)})}'`);
       }
     } else {
-      lines.push(`curl -X POST -u ${auth} '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '{"command":"turn_on"}'`);
-      lines.push(`curl -X POST -u ${auth} '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '{"command":"turn_off"}'`);
+      lines.push(`curl -X POST -b "$AUTH_JAR" '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '{"command":"turn_on"}'`);
+      lines.push(`curl -X POST -b "$AUTH_JAR" '${base}/api/v1/devices/${encodeURIComponent(id)}/command' -H 'Content-Type: application/json' -d '{"command":"turn_off"}'`);
     }
   } else {
     lines.push('', '# 当前设备没有发现可执行控制能力；重新同步后会自动更新可用 API。');
@@ -245,10 +287,11 @@ function renderDeviceRow(d) {
       <span class="device-glyph ${cls}">${icon}</span>
       <div class="device-list-title"><h3 title="${esc(d.name)}">${esc(d.name)}</h3><small>${esc(deviceBrandGroup(d))} <span>·</span> ${esc(d.room || '未分区')}</small></div>
       ${status}
+      ${renderDeviceHoverActions(d)}
     </div>
     ${renderDeviceAttributes(d)}
     ${renderEnergyMetrics(d.energy)}
-    <div class="device-list-actions"><span class="device-state">${esc(summary)}</span><div class="device-list-command-area">${renderDeviceControls(d)}<button type="button" class="device-api-copy" data-copy-device-api="${esc(d.id)}" title="复制此设备的 API 请求示例">复制 API</button></div></div>
+    <div class="device-list-actions"><span class="device-state">${esc(summary)}</span><div class="device-list-command-area">${renderDeviceControls(d)}</div></div>
   </article>`;
 }
 
@@ -295,7 +338,7 @@ function renderGroupedDevices(devices) {
 function renderDevices() {
   state.devices = asArray(state.devices);
   syncDeviceFilters(state.devices);
-  const recent = state.devices.slice(0,4);
+  const recent = state.devices.slice().sort((a,b) => new Date(b.lastSeen || b.createdAt || 0) - new Date(a.lastSeen || a.createdAt || 0)).slice(0,4);
   $('#overview-devices').innerHTML = recent.length ? recent.map(renderDeviceCard).join('') : '<div class="empty-state">还没有设备，点击添加设备开始使用。</div>';
   const q = ($('#device-search')?.value || '').trim().toLowerCase(); const brand = $('#brand-filter')?.value || ''; const category = $('#category-filter')?.value || '';
   const filtered = state.devices.filter(d => (!q || [d.name,d.brand,d.room,d.model,d.category].join(' ').toLowerCase().includes(q)) && (!brand || deviceBrandGroup(d)===brand) && (!category || d.category===category));
@@ -407,6 +450,7 @@ document.addEventListener('click', async (e) => {
   }
   const cmd=e.target.closest('[data-command]'); if(cmd){cmd.disabled=true;try{const body={command:cmd.dataset.command};if(cmd.dataset.channel!==undefined)body.channel=Number(cmd.dataset.channel);await api(`/api/devices/${encodeURIComponent(cmd.dataset.id)}/command`,{method:'POST',body:JSON.stringify(body)});await loadAll();toast('控制命令已发送','success')}catch(err){toast(err.message,'error')}finally{cmd.disabled=false}return;}
   const copyAPI=e.target.closest('[data-copy-device-api]'); if(copyAPI){const device=state.devices.find(d=>d.id===copyAPI.dataset.copyDeviceApi);if(!device){toast('设备已不存在，请刷新列表','error');return;}try{await copyText(buildDeviceAPIText(device));toast('设备 API 请求示例已复制','success')}catch(err){toast(err.message,'error')}return;}
+  const deleteDevice=e.target.closest('[data-delete-device]'); if(deleteDevice){const device=state.devices.find(d=>d.id===deleteDevice.dataset.deleteDevice);if(!device){toast('设备已不存在，请刷新列表','error');return;}const ok=confirm(`确定永久删除“${device.name}”？普通设备同步不会重新添加；删除品牌账号并重新登录后，可以重新同步恢复。`);if(!ok)return;deleteDevice.disabled=true;try{await api(`/api/devices/${encodeURIComponent(device.id)}`,{method:'DELETE'});state.devices=state.devices.filter(d=>d.id!==device.id);renderDevices();toast('设备已删除；重新登录品牌账号后可恢复','success')}catch(err){toast(err.message,'error')}finally{deleteDevice.disabled=false}return;}
   const prop=e.target.closest('[data-miot-property]'); if(prop){prop.disabled=true;try{const value=prop.dataset.value==='true';await api(`/api/v1/devices/${encodeURIComponent(prop.dataset.id)}/property`,{method:'POST',body:JSON.stringify({siid:Number(prop.dataset.siid),piid:Number(prop.dataset.piid),value})});await loadAll();toast('MIoT 属性写入成功','success')}catch(err){toast(err.message,'error')}finally{prop.disabled=false}return;}
   const setProp=e.target.closest('[data-miot-set-property]'); if(setProp){setProp.disabled=true;try{const field=document.getElementById(setProp.dataset.inputId);if(!field)throw new Error('找不到属性输入框，请刷新设备列表');const format=String(setProp.dataset.format||'').toLowerCase();if(field.value.trim()==='')throw new Error('请先输入属性值');let value=field.value;if(/^(u?int|float|double)/.test(format)){value=Number(field.value);if(!Number.isFinite(value))throw new Error('请输入有效数字');}await api(`/api/v1/devices/${encodeURIComponent(setProp.dataset.id)}/property`,{method:'POST',body:JSON.stringify({siid:Number(setProp.dataset.siid),piid:Number(setProp.dataset.piid),value})});await loadAll();toast('MIoT 属性写入成功','success')}catch(err){toast(err.message,'error')}finally{setProp.disabled=false}return;}
   const action=e.target.closest('[data-miot-action]'); if(action){action.disabled=true;try{const device=state.devices.find(d=>d.id===action.dataset.id);const control=asArray(device?.controls).find(c=>c.id===action.dataset.control);if(!control)throw new Error('动作能力已变化，请重新同步设备');const params=[];for(let i=0;i<asArray(control.inputs).length;i++){const input=control.inputs[i];const hint=input.options?.length?`可选：${input.options.map(x=>`${x.label}=${JSON.stringify(x.value)}`).join('、')}`:`格式：${input.format||'文本'}`;const initial=input.options?.length?String(input.options[0].value):['bool','boolean'].includes(String(input.format || '').toLowerCase())?'false':/^(u?int|float|double)/i.test(input.format||'')?'0':'';const entered=prompt(`${input.name}\n${hint}`,initial);if(entered===null)throw new Error('已取消操作');params.push(parsePromptValue(entered,input));}await api(`/api/v1/devices/${encodeURIComponent(action.dataset.id)}/action`,{method:'POST',body:JSON.stringify({siid:Number(action.dataset.siid),aiid:Number(action.dataset.aiid),params})});await loadAll();toast(`已执行：${control.name}`,'success')}catch(err){if(err.message!=='已取消操作')toast(err.message,'error')}finally{action.disabled=false}return;}
@@ -444,6 +488,21 @@ $('#device-form').addEventListener('submit',async e=>{
   }catch(err){toast(err.message,'error')}
   finally{if(submitButton) submitButton.disabled=false;}
 });
+function updateXiaomiVerifyChannels(result={}) {
+  const row=$('#xiaomi-verify-channel-row'), select=$('#xiaomi-verify-channel');
+  const channels=Array.isArray(result.channels)?result.channels:[];
+  select.replaceChildren();
+  for(const item of channels){
+    const option=document.createElement('option'); option.value=String(item.flag); option.textContent=item.label||item.channel||String(item.flag);
+    select.appendChild(option);
+  }
+  const selected=Number(result.selectedFlag||state.xiaomiVerifyFlag||channels[0]?.flag||0);
+  state.xiaomiVerifyFlag=selected;
+  if(selected)select.value=String(selected);
+  row.hidden=channels.length<2;
+  select.onchange=()=>{state.xiaomiVerifyFlag=Number(select.value)||0;};
+}
+
 $('#account-form').addEventListener('submit',async e=>{
   e.preventDefault();
   const form=e.currentTarget;
@@ -458,9 +517,9 @@ $('#account-form').addEventListener('submit',async e=>{
       if(state.xiaomiChallengeType==='verify'){
         result=await api('/api/integrations/xiaomi/verify',{method:'POST',body:JSON.stringify({challengeId:state.xiaomiChallengeId,ticket:$('#xiaomi-verify-code').value.trim()})});
       }else if(state.xiaomiChallengeType==='sendRetry'){
-        result=await api('/api/integrations/xiaomi/verify/send',{method:'POST',body:JSON.stringify({challengeId:state.xiaomiChallengeId,resend:false})});
+        result=await api('/api/integrations/xiaomi/verify/send',{method:'POST',body:JSON.stringify({challengeId:state.xiaomiChallengeId,resend:false,flag:state.xiaomiVerifyFlag})});
       }else if(state.xiaomiChallengeType==='identityCaptcha'){
-        result=await api('/api/integrations/xiaomi/verify/send',{method:'POST',body:JSON.stringify({challengeId:state.xiaomiChallengeId,captcha:$('#xiaomi-captcha-code').value.trim()})});
+        result=await api('/api/integrations/xiaomi/verify/send',{method:'POST',body:JSON.stringify({challengeId:state.xiaomiChallengeId,captcha:$('#xiaomi-captcha-code').value.trim(),flag:state.xiaomiVerifyFlag})});
       }else if(state.xiaomiChallengeType==='captcha'){
         result=await api('/api/integrations/xiaomi/captcha',{method:'POST',body:JSON.stringify({challengeId:state.xiaomiChallengeId,code:$('#xiaomi-captcha-code').value.trim()})});
       }else{
@@ -479,15 +538,15 @@ $('#account-form').addEventListener('submit',async e=>{
         toast(result.message||'请完成小米图形验证');return;
       }
       if(result.verifyPending){
-        state.xiaomiChallengeId=result.challengeId;state.xiaomiChallengeType='sendRetry';
+        state.xiaomiChallengeId=result.challengeId;state.xiaomiChallengeType='sendRetry';updateXiaomiVerifyChannels(result);
         $('#xiaomi-captcha').hidden=true;$('#xiaomi-verify-panel').hidden=false;
-        $('#xiaomi-verify-code').hidden=true;$('#xiaomi-resend').textContent='重试读取验证方式';
+        $('#xiaomi-verify-code').hidden=true;$('#xiaomi-resend').textContent=result.errorCode===70022?'切换验证方式 / 重新发送':'重试读取验证方式';
         $('#xiaomi-verify-hint').textContent=result.message||'小米已进入安全验证，但暂时无法读取验证方式。请在当前会话中重试，不要重新登录。';
         $('#account-submit').textContent='重试验证流程';
         toast('已保留本次小米验证会话，请勿重新登录','warning');return;
       }
       if(result.verifyRequired){
-        state.xiaomiChallengeId=result.challengeId;state.xiaomiChallengeType='verify';
+        state.xiaomiChallengeId=result.challengeId;state.xiaomiChallengeType='verify';updateXiaomiVerifyChannels(result);
         $('#xiaomi-captcha').hidden=true;$('#xiaomi-verify-panel').hidden=false;
         $('#xiaomi-verify-hint').textContent=result.message||`小米验证码已发送（${result.channel==='Phone'?'短信':'邮箱'}），请输入验证码。`;
         $('#xiaomi-verify-code').hidden=false;$('#xiaomi-resend').textContent='重新发送验证码';
@@ -517,11 +576,12 @@ $('#account-form').addEventListener('submit',async e=>{
 });
 $('#xiaomi-resend').addEventListener('click',async()=>{
   const btn=$('#xiaomi-resend');btn.disabled=true;
-  try{const result=await api('/api/integrations/xiaomi/verify/send',{method:'POST',body:JSON.stringify({challengeId:state.xiaomiChallengeId,resend:state.xiaomiChallengeType==='verify'})});
+  try{const result=await api('/api/integrations/xiaomi/verify/send',{method:'POST',body:JSON.stringify({challengeId:state.xiaomiChallengeId,resend:state.xiaomiChallengeType==='verify',flag:state.xiaomiVerifyFlag})});
     if(result.identityCaptcha){state.xiaomiChallengeType='identityCaptcha';$('#xiaomi-verify-panel').hidden=true;$('#xiaomi-captcha').hidden=false;$('#xiaomi-captcha-image').src=result.captchaImage;$('#account-submit').textContent='提交验证码并发送短信';}
-    else if(result.verifyRequired){state.xiaomiChallengeType='verify';$('#xiaomi-verify-panel').hidden=false;$('#xiaomi-verify-code').hidden=false;$('#xiaomi-resend').textContent='重新发送验证码';$('#account-submit').textContent='验证并登录';$('#xiaomi-verify-hint').textContent=result.message||'验证码已发送，请查收。';toast(result.message||'验证码已发送','success');}
+    else if(result.verifyPending){state.xiaomiChallengeType='sendRetry';updateXiaomiVerifyChannels(result);$('#xiaomi-verify-panel').hidden=false;$('#xiaomi-verify-code').hidden=true;$('#xiaomi-verify-hint').textContent=result.message||'小米暂时拒绝发送验证码，请更换验证方式或稍后重试。';toast('验证会话已保留','warning');}
+    else if(result.verifyRequired){state.xiaomiChallengeType='verify';updateXiaomiVerifyChannels(result);$('#xiaomi-verify-panel').hidden=false;$('#xiaomi-verify-code').hidden=false;$('#xiaomi-resend').textContent='重新发送验证码';$('#account-submit').textContent='验证并登录';$('#xiaomi-verify-hint').textContent=result.message||'验证码已发送，请查收。';toast(result.message||'验证码已发送','success');}
     else toast(result.message||'已更新小米验证状态','success');
-  }catch(err){$('#account-error-message').textContent=err.message||'未知错误';$('#account-error-panel').hidden=false;await loadLogs();toast(err.message,'error')}
+  }catch(err){$('#account-error-message').textContent=err.message||'未知错误';$('#account-error-panel').hidden=false;$('#xiaomi-verify-hint').textContent=err.message||'验证码发送失败；当前验证会话可能仍然有效。';await loadLogs();toast(err.message,'error')}
   finally{btn.disabled=false;}
 });
 $('#modal-close').onclick=()=>closeModal('#modal-backdrop');$('#modal-cancel').onclick=()=>closeModal('#modal-backdrop');
@@ -560,6 +620,46 @@ $('#scan-btn').onclick=async()=>{
   finally{btn.disabled=false;btn.textContent='⌁ 开始扫描'}
 };
 
-loadAll();
+$('#login-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const form=event.currentTarget;
+  const button=form.querySelector('button[type="submit"]');
+  const username=form.elements.username.value.trim();
+  const password=form.elements.password.value;
+  button.disabled=true; $('#login-error').hidden=true;
+  try {
+    await api('/api/auth/login',{method:'POST',body:JSON.stringify({username,password})});
+    form.elements.password.value='';
+    enterApplication();
+    await loadAll(); await loadBuildMetadata();
+  } catch(error) {
+    $('#login-error').textContent=error.message||'登录失败';
+    $('#login-error').hidden=false;
+    form.elements.password.focus();
+  } finally { button.disabled=false; }
+});
+$('#logout-btn').addEventListener('click',async()=>{
+  try{await api('/api/auth/logout',{method:'POST',body:'{}'});}catch{}
+  showLoginScreen('已退出登录');
+});
+async function bootstrapAuth(){
+  try{
+    const response=await fetch('/api/auth/session',{credentials:'same-origin'});
+    const session=await response.json();
+    if(session.authenticated){enterApplication();await loadAll();await loadBuildMetadata();return;}
+  }catch{}
+  showLoginScreen();
+}
+bootstrapAuth();
+async function loadBuildMetadata(){
+  try {
+    const meta = await api('/api/health');
+    const node = $('#build-meta');
+    if (!node) return;
+    node.textContent = `GoHome v${meta.version || 'dev'}`;
+    node.title = `构建日期：${meta.buildDate || '未知'}\n版本序号：${meta.commitCount || '0'}\nGit 提交：${meta.gitHash || '无 Git 信息'}\n提交内容：${meta.gitMessage || '未提供'}`;
+    node.setAttribute('aria-label', node.title.replaceAll('\n', '；'));
+  } catch (_) { /* Keep the static footer when metadata is unavailable. */ }
+}
 // Poll local state lightly; no permanent browser socket or heavy client runtime.
-setInterval(()=>{if(document.visibilityState==='visible')loadAll()},15000);
+setInterval(()=>{if(document.visibilityState==='visible'&&document.body.classList.contains('authenticated'))loadAll()},15000);

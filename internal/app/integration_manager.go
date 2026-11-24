@@ -202,14 +202,22 @@ func newXiaomiIdentityPending(id, username, password, region string, client *htt
 }
 
 type integrationManager struct {
-	store  *Store
-	vault  *vault
-	mu     sync.Mutex
-	xiaomi map[string]*xiaomiPending
+	store          *Store
+	vault          *vault
+	mu             sync.Mutex
+	energySampleMu sync.Mutex
+	providerPollMu sync.Mutex
+	xiaomi         map[string]*xiaomiPending
+	energyWarnAt   map[string]time.Time
 }
 
 func newIntegrationManager(s *Store, v *vault) *integrationManager {
-	return &integrationManager{store: s, vault: v, xiaomi: map[string]*xiaomiPending{}}
+	return &integrationManager{
+		store:        s,
+		vault:        v,
+		xiaomi:       map[string]*xiaomiPending{},
+		energyWarnAt: map[string]time.Time{},
+	}
 }
 
 // normalizeXiaomiLocation accepts the common formats returned by Xiaomi:
@@ -388,19 +396,30 @@ func parseEwelinkEnergyMetrics(params map[string]any, model string) *EnergyMetri
 	e.PowerW = findMetric(params, "power", "apower", "active_power", "electric_power", "power_w", "power_1")
 	e.VoltageV = findMetric(params, "voltage", "voltage_v", "voltage_1")
 	e.CurrentA = findMetric(params, "current", "current_a", "current_1")
-	e.TodayKWh = findExactMetric(params, "dayKwh")
+	// eWeLink's official status API uses dailyKwh (0.01 kWh units).
+	// SonoffLAN model profiles also expose dayKwh/weekKwh on selected UIIDs.
+	// numericMetric rejects the documented -99999 "no value" sentinel.
+	e.TodayKWh = findMetric(params, "dailyKwh", "dayKwh", "todayKwh")
 	if e.TodayKWh != nil {
 		*e.TodayKWh *= 0.01
+		e.TodaySource = "eWeLink 云端日统计"
 	} else {
 		e.TodayKWh = findMetric(params, "energy_day", "energyday", "daily_energy", "today_energy", "today_kwh")
+		if e.TodayKWh != nil {
+			e.TodaySource = "eWeLink 云端日统计"
+		}
 	}
-	e.WeekKWh = findExactMetric(params, "weekKwh")
+	e.WeekKWh = findMetric(params, "weekKwh", "weeklyKwh")
 	if e.WeekKWh != nil {
 		*e.WeekKWh *= 0.01
+		e.WeekSource = "eWeLink 云端周统计"
 	} else {
 		e.WeekKWh = findMetric(params, "energy_week", "energyweek", "weekly_energy", "week_kwh")
+		if e.WeekKWh != nil {
+			e.WeekSource = "eWeLink 云端周统计"
+		}
 	}
-	e.MonthKWh = findExactMetric(params, "monthKwh")
+	e.MonthKWh = findMetric(params, "monthlyKwh", "monthKwh")
 	if e.MonthKWh != nil {
 		*e.MonthKWh *= 0.01
 	} else {
@@ -423,6 +442,12 @@ func parseEwelinkEnergyMetrics(params map[string]any, model string) *EnergyMetri
 	}
 	// Do not guess that a generic `energy` field is lifetime energy. SonoffLAN
 	// documents it as hourly historical cloud usage for several UIIDs.
+	if e.TodayKWh == nil {
+		e.TodaySource = "云端未返回日累计；等待有效功率或月累计采样"
+	}
+	if e.WeekKWh == nil {
+		e.WeekSource = "云端周统计仅部分型号提供；等待本机每日累计"
+	}
 	e.Supported = e.PowerW != nil || e.VoltageV != nil || e.CurrentA != nil || e.TodayKWh != nil || e.WeekKWh != nil || e.MonthKWh != nil || e.YearKWh != nil || e.TotalKWh != nil || e.HistoryKWh != nil || ewelinkModelHasMeter(model)
 	if !e.Supported {
 		return nil
@@ -462,7 +487,64 @@ func (m *integrationManager) syncAccount(ctx context.Context, id string) (int, e
 	}
 	m.importDevices(id, secret.Provider, devices)
 	m.setAccountStatus(id, "connected", fmt.Sprintf("已授权 · 已同步 %d 台设备", len(devices)))
+	if secret.Provider == "ewelink" {
+		// The global sampler may have run before this account was added.
+		// Sample this account immediately so the first baseline appears without
+		// waiting for the next five-minute ticker.
+		go func(accountID string) {
+			time.Sleep(750 * time.Millisecond) // avoid colliding with the just-finished sync status request
+			m.sampleEwelinkEnergyForAccount(context.Background(), accountID)
+		}(id)
+	}
 	return len(devices), nil
+}
+
+func mergeMissingEnergyMetrics(current, previous *EnergyMetrics) {
+	if current == nil || previous == nil {
+		return
+	}
+	current.Supported = current.Supported || previous.Supported
+	if current.PowerW == nil {
+		current.PowerW = cloneFloat(previous.PowerW)
+	}
+	if current.VoltageV == nil {
+		current.VoltageV = cloneFloat(previous.VoltageV)
+	}
+	if current.CurrentA == nil {
+		current.CurrentA = cloneFloat(previous.CurrentA)
+	}
+	now := time.Now().In(time.Local)
+	previousAt := previous.UpdatedAt.In(time.Local)
+	previousIsToday := !previous.UpdatedAt.IsZero() && previousAt.Format("2006-01-02") == now.Format("2006-01-02")
+	previousIsThisWeek := !previous.UpdatedAt.IsZero() && startOfLocalWeek(previousAt).Equal(startOfLocalWeek(now))
+	if current.TodayKWh == nil && previousIsToday {
+		current.TodayKWh = cloneFloat(previous.TodayKWh)
+	}
+	if current.WeekKWh == nil && previousIsThisWeek {
+		current.WeekKWh = cloneFloat(previous.WeekKWh)
+	}
+	if current.MonthKWh == nil {
+		current.MonthKWh = cloneFloat(previous.MonthKWh)
+	}
+	if current.YearKWh == nil {
+		current.YearKWh = cloneFloat(previous.YearKWh)
+	}
+	if current.TotalKWh == nil {
+		current.TotalKWh = cloneFloat(previous.TotalKWh)
+	}
+	if current.HistoryKWh == nil {
+		current.HistoryKWh = cloneFloat(previous.HistoryKWh)
+	}
+	current.Source = firstNonEmpty(current.Source, previous.Source)
+	if current.TodayKWh != nil {
+		current.TodaySource = firstNonEmpty(current.TodaySource, previous.TodaySource)
+	}
+	if current.WeekKWh != nil {
+		current.WeekSource = firstNonEmpty(current.WeekSource, previous.WeekSource)
+	}
+	if previous.UpdatedAt.After(current.UpdatedAt) {
+		current.UpdatedAt = previous.UpdatedAt
+	}
 }
 
 func (m *integrationManager) importDevices(accountID, provider string, items []Device) {
@@ -471,6 +553,12 @@ func (m *integrationManager) importDevices(accountID, provider string, items []D
 	seen := map[string]bool{}
 	for i := range items {
 		d := items[i]
+		// A user-hidden device stays hidden during ordinary sync. Removing
+		// the brand account and logging in again creates a new account ID,
+		// which intentionally allows the device to be imported again.
+		if m.store.data.DeletedDevices[deletedDeviceKey(accountID, d.ID)] {
+			continue
+		}
 		d.AccountID = accountID
 		d.Demo = false
 		d.LastSeen = time.Now()
@@ -481,9 +569,13 @@ func (m *integrationManager) importDevices(accountID, provider string, items []D
 				old := m.store.data.Devices[j]
 				d.Room = firstNonEmpty(d.Room, old.Room)
 				d.CreatedAt = old.CreatedAt
-				if d.Energy == nil && old.Energy != nil {
-					energy := *old.Energy
-					d.Energy = &energy
+				if old.Energy != nil {
+					if d.Energy == nil {
+						energy := *old.Energy
+						d.Energy = &energy
+					} else {
+						mergeMissingEnergyMetrics(d.Energy, old.Energy)
+					}
 				}
 				if d.Power == nil && old.Power != nil {
 					power := *old.Power
@@ -557,9 +649,17 @@ func (m *integrationManager) removeAccount(id string) error {
 	for _, d := range m.store.data.Devices {
 		if d.AccountID != id {
 			kept = append(kept, d)
+		} else {
+			delete(m.store.data.EnergyHistory, d.ID)
 		}
 	}
 	m.store.data.Devices = kept
+	prefix := id + "|"
+	for key := range m.store.data.DeletedDevices {
+		if strings.HasPrefix(key, prefix) {
+			delete(m.store.data.DeletedDevices, key)
+		}
+	}
 	_ = m.store.saveLocked()
 	m.store.mu.Unlock()
 	return nil

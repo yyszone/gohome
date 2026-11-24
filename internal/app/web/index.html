@@ -9,7 +9,22 @@
   <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
-<div class="app-shell">
+<div id="login-screen" class="login-screen">
+  <section class="login-card" aria-labelledby="login-title">
+    <div class="login-brand"><div class="brand-mark"><span></span><span></span><span></span></div><div><strong>GoHome</strong><small>SMART HOME CENTER</small></div></div>
+    <div class="eyebrow">LOCAL HOME CONTROL</div>
+    <h1 id="login-title">欢迎回来</h1>
+    <p class="login-subtitle">登录后管理你的米家、易微联和局域网设备。</p>
+    <form id="login-form">
+      <label>账号<input name="username" autocomplete="username" placeholder="输入管理员账号" required /></label>
+      <label>密码<input name="password" type="password" autocomplete="current-password" placeholder="输入管理密码" required /></label>
+      <p id="login-error" class="login-error" hidden></p>
+      <button class="btn btn-primary login-submit" type="submit">登录 GoHome</button>
+    </form>
+    <small class="login-security">登录状态保存在本机 Cookie 中。请仅在可信局域网使用，不要将管理端口直接暴露到公网。</small>
+  </section>
+</div>
+<div id="app-shell" class="app-shell">
   <aside class="sidebar" id="sidebar">
     <div class="brand-lockup">
       <div class="brand-mark"><span></span><span></span><span></span></div>
@@ -25,7 +40,6 @@
     </nav>
     <div class="sidebar-spacer"></div>
     <div class="side-status"><span class="pulse"></span><div><strong>核心服务运行中</strong><small>Go engine · Local mode</small></div></div>
-    <div class="sidebar-foot"><span class="tiny-dot"></span> GoHome v0.2.8 <span class="foot-right">轻量 · 本地优先</span></div>
   </aside>
 
   <main class="main-area">
@@ -35,6 +49,7 @@
       <div class="top-actions">
         <span class="local-chip"><span></span> 本地服务</span>
         <button class="icon-btn" id="refresh-btn" title="刷新数据">↻</button>
+        <button class="btn btn-ghost btn-logout" id="logout-btn" type="button">退出登录</button>
         <div class="avatar">Y</div>
       </div>
     </header>
@@ -97,7 +112,7 @@
       <section class="panel logs-panel"><div class="log-table-head"><span>级别</span><span>事件</span><span>时间</span><span>操作</span></div><div id="log-list" class="log-list"><div class="loading-state">正在加载日志…</div></div></section>
     </section>
 
-    <footer class="app-footer"><span>© 2026 GoHome</span><span>DESIGNED FOR YOUR HOME <i>✦</i></span><span>运行于本地网络</span></footer>
+    <footer class="app-footer"><span>© 2026 <span id="build-meta" class="build-meta" title="正在读取构建信息…">GoHome</span></span><span>DESIGNED FOR YOUR HOME <i>✦</i></span><span>运行于本地网络</span></footer>
   </main>
 </div>
 
@@ -111,7 +126,7 @@
     <label>小米密码<input name="password" type="password" autocomplete="current-password" placeholder="小米账号密码" /></label>
     <label>小米服务器<select name="region"><option value="cn">中国大陆</option><option value="us">美国</option><option value="sg">新加坡</option><option value="de">欧洲（德国节点）</option><option value="ru">俄罗斯</option></select></label>
     <div id="xiaomi-captcha" class="captcha-panel" hidden><strong>小米图形验证码</strong><p>请输入下方图片中的字符。</p><img id="xiaomi-captcha-image" alt="小米登录验证码" /><input id="xiaomi-captcha-code" autocomplete="off" placeholder="输入图形验证码" /></div>
-    <div id="xiaomi-verify-panel" class="captcha-panel" hidden><strong>小米短信 / 邮箱验证</strong><p id="xiaomi-verify-hint">验证码已发送，请查收。</p><input id="xiaomi-verify-code" autocomplete="one-time-code" inputmode="numeric" placeholder="输入短信或邮箱验证码" hidden /><button type="button" class="btn btn-small btn-outline" id="xiaomi-resend">重新发送验证码</button></div>
+    <div id="xiaomi-verify-panel" class="captcha-panel" hidden><strong>小米短信 / 邮箱验证</strong><p id="xiaomi-verify-hint">验证码已发送，请查收。</p><label id="xiaomi-verify-channel-row" class="verify-channel-row" hidden>验证方式<select id="xiaomi-verify-channel"></select></label><input id="xiaomi-verify-code" autocomplete="one-time-code" inputmode="numeric" placeholder="输入短信或邮箱验证码" hidden /><button type="button" class="btn btn-small btn-outline" id="xiaomi-resend">重新发送验证码</button></div>
   </div>
   <div id="ewelink-fields" class="provider-fields" hidden>
     <div class="form-note">直接使用 eWeLink App 消费账号登录，不需要创建开发者应用。此方式参考 SonoffLAN 社区集成的兼容认证协议；平台可能调整接口，账号凭证不会写入磁盘，登录令牌会加密保存。</div>

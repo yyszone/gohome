@@ -27,7 +27,93 @@ func testApp(t *testing.T) *App {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newApp(s)
+	a := newApp(s)
+	// Endpoint tests use an explicit auth bypass. Persistent cookie auth is
+	// covered separately in TestPersistentCookieAuth and is always enabled in
+	// production; administrator credentials are fixed in source code.
+	a.authDisabled = true
+	return a
+}
+
+func TestPersistentCookieAuth(t *testing.T) {
+	a := testApp(t)
+	a.authDisabled = false
+
+	// The API is protected before login.
+	unauthenticated := httptest.NewRecorder()
+	a.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/health", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status=%d want=%d", unauthenticated.Code, http.StatusUnauthorized)
+	}
+
+	loginBody := `{"username":"admin","password":"123456"}`
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(loginBody))
+	loginReq.RemoteAddr = "192.0.2.10:12345"
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginResp := httptest.NewRecorder()
+	a.ServeHTTP(loginResp, loginReq)
+	if loginResp.Code != http.StatusOK {
+		t.Fatalf("login status=%d body=%s", loginResp.Code, loginResp.Body.String())
+	}
+	cookies := loginResp.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != sessionCookieName || cookies[0].MaxAge <= 0 || !cookies[0].HttpOnly {
+		t.Fatalf("persistent HttpOnly session cookie missing: %+v", cookies)
+	}
+
+	requestWithCookie := func(app *App) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+		req.AddCookie(cookies[0])
+		recorder := httptest.NewRecorder()
+		app.ServeHTTP(recorder, req)
+		return recorder
+	}
+	if got := requestWithCookie(a); got.Code != http.StatusOK {
+		t.Fatalf("authenticated status=%d body=%s", got.Code, got.Body.String())
+	}
+
+	// Recreate the App using the same data directory/key: browser cookies must
+	// survive process restarts as long as data/gohome.session.key is preserved.
+	restarted := newApp(a.store)
+	if got := requestWithCookie(restarted); got.Code != http.StatusOK {
+		t.Fatalf("cookie did not survive app restart: status=%d body=%s", got.Code, got.Body.String())
+	}
+}
+
+func TestPersistentCookieAuthRejectsWrongPassword(t *testing.T) {
+	a := testApp(t)
+	a.authDisabled = false
+	for _, credentials := range []string{`{"username":"wrong","password":"123456"}`, `{"username":"admin","password":"wrong"}`} {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(credentials))
+		req.RemoteAddr = "192.0.2.11:12345"
+		resp := httptest.NewRecorder()
+		a.ServeHTTP(resp, req)
+		if resp.Code != http.StatusUnauthorized {
+			t.Fatalf("invalid credentials status=%d body=%s", resp.Code, resp.Body.String())
+		}
+	}
+}
+
+func TestXiaomi70022IsReportedAsSendFailure(t *testing.T) {
+	pending := &xiaomiPending{
+		VerifyChannel:   "Phone",
+		VerifyFlag:      4,
+		IdentityOptions: []int{4, 8},
+	}
+	result := (&integrationManager{}).xiaomiVerifyPendingResult("challenge-1", pending, errors.New("小米短信发送接口拒绝本次请求（70022）：发送验证码失败"))
+	if result["verifyPending"] != true || result["errorCode"] != 70022 {
+		t.Fatalf("unexpected pending response: %#v", result)
+	}
+	message, _ := result["message"].(string)
+	if strings.Contains(message, "无法读取验证渠道") || !strings.Contains(message, "发送阶段") {
+		t.Fatalf("70022 should be described as send failure, got: %s", message)
+	}
+	if !strings.Contains(message, "同一手机号 24 小时") || strings.Contains(message, "你提到其他手机号") {
+		t.Fatalf("70022 should explain per-number throttling without user-specific wording, got: %s", message)
+	}
+	channels, _ := result["channels"].([]map[string]any)
+	if len(channels) != 2 {
+		t.Fatalf("expected SMS and email channels for retry, got: %#v", result["channels"])
+	}
 }
 
 func TestHealthEndpoint(t *testing.T) {
@@ -59,6 +145,134 @@ func TestStoreSnapshotDeepCopiesDeviceChannels(t *testing.T) {
 	got := a.store.snapshot().Devices[0]
 	if got.Channels[0].Name == "mutated outside store" || got.Channels[0].Power == nil || !*got.Channels[0].Power {
 		t.Fatalf("snapshot aliased persisted channel state: %+v", got.Channels[0])
+	}
+}
+
+func TestRefreshDeviceStatesAppliesExternalSwitchChanges(t *testing.T) {
+	a := testApp(t)
+	initialPower := true
+	initialChannelPower := true
+	if err := a.store.putDevice(Device{
+		ID: "ewelink-state-1", AccountID: "account-1", Name: "电量插座",
+		Protocol: "ewelink-cloud", Online: true, Power: &initialPower,
+		CanControl: true, Channels: []DeviceChannel{{Outlet: 0, Name: "通道 1", Power: &initialChannelPower, CanControl: true}},
+		Controls:   []DeviceControl{{ID: "switch", Kind: "property", Name: "开关", Value: true}},
+		Attributes: []DeviceAttribute{{Key: "temperature", Label: "温度", Value: "31", Unit: "°C"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	externalOff := false
+	updatedChannel := false
+	_, err := a.store.refreshDeviceStates("account-1", []Device{{
+		ID: "ewelink-state-1", Online: true, Power: &externalOff,
+		Channels: []DeviceChannel{{Outlet: 0, Power: &updatedChannel, CanControl: true}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := a.store.snapshot().Devices[0]
+	if got.Power == nil || *got.Power {
+		t.Fatalf("external off state was not applied: %+v", got.Power)
+	}
+	if len(got.Channels) != 1 || got.Channels[0].Power == nil || *got.Channels[0].Power {
+		t.Fatalf("external channel off state was not applied: %+v", got.Channels)
+	}
+	if !got.CanControl || len(got.Controls) != 1 || len(got.Attributes) != 1 {
+		t.Fatalf("refresh should preserve existing controls and attributes: %+v", got)
+	}
+}
+
+func TestProviderAccountCanPollAfterTransientSyncError(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		want   bool
+	}{
+		{status: "connected", want: true},
+		{status: "sync_error", want: true},
+		{status: "pending", want: false},
+		{status: "disconnected", want: false},
+		{status: " SYNC_ERROR ", want: true},
+	} {
+		if got := providerAccountCanPoll(tc.status); got != tc.want {
+			t.Errorf("providerAccountCanPoll(%q)=%v, want %v", tc.status, got, tc.want)
+		}
+	}
+}
+
+func TestRefreshDeviceStatesAppliesOfflineStatus(t *testing.T) {
+	a := testApp(t)
+	power := true
+	lastSeen := time.Now().Add(-time.Minute)
+	if err := a.store.putDevice(Device{ID: "offline-poll-device", AccountID: "account-offline", Online: true, Power: &power, LastSeen: lastSeen}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.store.refreshDeviceStates("account-offline", []Device{{ID: "offline-poll-device", Online: false}}); err != nil {
+		t.Fatal(err)
+	}
+	got := a.store.snapshot().Devices[0]
+	if got.Online {
+		t.Fatal("external offline status was not applied")
+	}
+	if got.Power == nil || !*got.Power {
+		t.Fatal("missing power in an offline snapshot must not erase the last known switch state")
+	}
+	if !got.LastSeen.Equal(lastSeen) {
+		t.Fatal("offline polling must not move last-seen time forward")
+	}
+}
+
+func TestRefreshDeviceStatesDoesNotUpdateOtherAccountsOrReimport(t *testing.T) {
+	a := testApp(t)
+	power := true
+	if err := a.store.putDevice(Device{ID: "kept-device", AccountID: "account-a", Online: true, Power: &power}); err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	if _, err := a.store.refreshDeviceStates("account-b", []Device{{ID: "kept-device", Online: true, Power: &off}, {ID: "new-device", Online: true}}); err != nil {
+		t.Fatal(err)
+	}
+	got := a.store.snapshot().Devices
+	if len(got) != 1 || got[0].Power == nil || !*got[0].Power {
+		t.Fatalf("polling must not cross accounts or auto-import devices: %+v", got)
+	}
+}
+
+func TestLoginPageDoesNotDisplayDefaultCredentials(t *testing.T) {
+	page, err := webFiles.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(page)
+	for _, unwanted := range []string{`value="admin"`, "默认账号：admin", "默认密码：123456"} {
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("login page still exposes default credential hint %q", unwanted)
+		}
+	}
+}
+
+func TestEnergyUIHidesUnavailablePeriodValues(t *testing.T) {
+	page, err := webFiles.ReadFile("web/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(page)
+	start := strings.Index(text, "function renderEnergyMetrics(energy)")
+	end := strings.Index(text[start:], "function renderDeviceAttributes(d)")
+	if start < 0 || end < 0 {
+		t.Fatal("could not locate energy renderer in embedded app.js")
+	}
+	energyRenderer := text[start : start+end]
+	if strings.Contains(energyRenderer, "—") || strings.Contains(energyRenderer, "metrics.push") {
+		t.Fatal("energy renderer must not fabricate placeholder metrics")
+	}
+	start = strings.Index(text, "function overviewEnergy(d)")
+	end = strings.Index(text[start:], "function renderDeviceCard(d)")
+	if start < 0 || end < 0 {
+		t.Fatal("could not locate overview energy renderer in embedded app.js")
+	}
+	overviewRenderer := text[start : start+end]
+	if strings.Contains(overviewRenderer, "—") {
+		t.Fatal("overview energy renderer must not show missing values as dashes")
 	}
 }
 
@@ -402,6 +616,38 @@ func TestEwelinkMeterSyncFetchesStatusWhenSwitchParamsExist(t *testing.T) {
 	}
 	if len(devices) != 1 || devices[0].Energy == nil || devices[0].Energy.PowerW == nil || *devices[0].Energy.PowerW != 56.7 || devices[0].Energy.TodayKWh == nil || *devices[0].Energy.TodayKWh != 0.8 {
 		t.Fatalf("expected electrical measurements to be imported: %+v", devices)
+	}
+}
+
+func TestEwelinkStateRefreshQueriesLatestStatusEvenWhenListHasParams(t *testing.T) {
+	var statusCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v2/device/thing":
+			_, _ = w.Write([]byte(`{"error":0,"msg":"success","data":{"thingList":[{"itemType":1,"itemData":{"deviceid":"poll-plug-1","name":"External switch","productModel":"MINI-R4","brandName":"SONOFF","online":true,"devicekey":"device-key","params":{"switch":"on"}}}]}}`))
+		case "/v2/device/thing/status":
+			statusCalls++
+			_, _ = w.Write([]byte(`{"error":0,"msg":"success","data":{"params":{"switch":"off"}}}`))
+		default:
+			t.Fatalf("unexpected endpoint: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	devices, _, err := ewelinkFetchDevicesWithClientAndKeysOptions(
+		context.Background(),
+		providerSecret{Provider: "ewelink", Region: "cn", AccessToken: "test-access-token", AppID: ewelinkAppID},
+		server.Client(), server.URL, true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statusCalls != 1 {
+		t.Fatalf("expected one forced status query, got %d", statusCalls)
+	}
+	if len(devices) != 1 || devices[0].Power == nil || *devices[0].Power {
+		t.Fatalf("expected latest external off state, got %+v", devices)
 	}
 }
 
@@ -1251,5 +1497,191 @@ func TestEwelinkPeriodEnergyReadingsRequiresDayAndWeek(t *testing.T) {
 	}
 	if !ewelinkHasPeriodEnergyReadings(map[string]any{"dayKwh": 12, "weekKwh": 40}) {
 		t.Fatal("dayKwh and weekKwh should satisfy period energy detection")
+	}
+}
+
+func TestEwelinkOfficialDailyAndMonthlyKWhFields(t *testing.T) {
+	energy := parseEwelinkEnergyMetrics(map[string]any{
+		"dailyKwh":   135,
+		"monthlyKwh": 2460,
+		"power":      63.0,
+	}, "POWR3")
+	if energy == nil {
+		t.Fatal("expected energy metrics")
+	}
+	if energy.TodayKWh == nil || math.Abs(*energy.TodayKWh-1.35) > 1e-9 {
+		t.Fatalf("dailyKwh must be converted from 0.01 kWh units: %+v", energy)
+	}
+	if energy.MonthKWh == nil || math.Abs(*energy.MonthKWh-24.60) > 1e-9 {
+		t.Fatalf("monthlyKwh must be converted from 0.01 kWh units: %+v", energy)
+	}
+	if energy.WeekKWh != nil {
+		t.Fatalf("official daily/monthly fields must not be mislabeled as weekly energy: %+v", energy)
+	}
+}
+
+func TestEwelinkNoValueSentinelDoesNotBecomeEnergy(t *testing.T) {
+	energy := parseEwelinkEnergyMetrics(map[string]any{
+		"dailyKwh": -99999,
+		"power":    63.0,
+	}, "POWR3")
+	if energy == nil || energy.TodayKWh != nil {
+		t.Fatalf("-99999 is the documented no-value sentinel: %+v", energy)
+	}
+}
+
+func TestRecordEnergySampleSeedsAndIntegratesDayAndWeek(t *testing.T) {
+	a := testApp(t)
+	power := 120.0
+	if err := a.store.putDevice(Device{
+		ID: "meter-sample", Name: "测试计量插座", Protocol: "ewelink-cloud", Online: true,
+		Energy: &EnergyMetrics{Supported: true, PowerW: &power, Source: "eWeLink"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 11, 24, 12, 0, 0, 0, time.Local)
+	first := &EnergyMetrics{Supported: true, PowerW: &power, Source: "eWeLink"}
+	if err := a.store.recordEnergySample("meter-sample", first, start); err != nil {
+		t.Fatal(err)
+	}
+	firstState := a.store.snapshot().Devices[0].Energy
+	if firstState.TodayKWh == nil || *firstState.TodayKWh != 0 {
+		t.Fatalf("first sample should establish a visible zero baseline: %+v", firstState)
+	}
+	if firstState.WeekKWh == nil || *firstState.WeekKWh != 0 {
+		t.Fatalf("first sample should establish weekly baseline: %+v", firstState)
+	}
+
+	if err := a.store.recordEnergySample("meter-sample", first, start.Add(5*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	updated := a.store.snapshot().Devices[0].Energy
+	want := 120.0 * 5.0 / 60.0 / 1000.0
+	if updated.TodayKWh == nil || math.Abs(*updated.TodayKWh-want) > 1e-9 {
+		t.Fatalf("today energy = %v, want %.8f kWh", updated.TodayKWh, want)
+	}
+	if updated.WeekKWh == nil || math.Abs(*updated.WeekKWh-want) > 1e-9 {
+		t.Fatalf("week energy = %v, want %.8f kWh", updated.WeekKWh, want)
+	}
+	if !strings.Contains(updated.TodaySource, "首次采集") || !strings.Contains(updated.WeekSource, "本机每日累计") {
+		t.Fatalf("expected clear local-estimate source labels: %+v", updated)
+	}
+}
+
+func TestEwelinkOfficialDailyKWhUnderscoreAlias(t *testing.T) {
+	energy := parseEwelinkEnergyMetrics(map[string]any{"daily_kwh": 100}, "POWR3")
+	if energy == nil || energy.TodayKWh == nil || math.Abs(*energy.TodayKWh-1.0) > 1e-9 {
+		t.Fatalf("daily_kwh alias should normalize to 1.0 kWh: %+v", energy)
+	}
+}
+
+func TestRecordEnergySampleDerivesTodayAndWeekFromMonthlyCounter(t *testing.T) {
+	a := testApp(t)
+	if err := a.store.putDevice(Device{
+		ID: "meter-month-counter", Name: "月累计测试插座", Protocol: "ewelink-cloud", Online: true,
+		Energy: &EnergyMetrics{Supported: true, Source: "eWeLink"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 11, 24, 12, 0, 0, 0, time.Local)
+	first := &EnergyMetrics{Supported: true, MonthKWh: floatPointer(12.30), Source: "eWeLink"}
+	if err := a.store.recordEnergySample("meter-month-counter", first, start); err != nil {
+		t.Fatal(err)
+	}
+	baseline := a.store.snapshot().Devices[0].Energy
+	if baseline.TodayKWh == nil || *baseline.TodayKWh != 0 || baseline.WeekKWh == nil || *baseline.WeekKWh != 0 {
+		t.Fatalf("first month counter sample should establish explicit zero baselines: %+v", baseline)
+	}
+	second := &EnergyMetrics{Supported: true, MonthKWh: floatPointer(12.38), Source: "eWeLink"}
+	if err := a.store.recordEnergySample("meter-month-counter", second, start.Add(5*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	updated := a.store.snapshot().Devices[0].Energy
+	if updated.TodayKWh == nil || math.Abs(*updated.TodayKWh-0.08) > 1e-9 {
+		t.Fatalf("month counter delta should become today's kWh: %+v", updated)
+	}
+	if updated.WeekKWh == nil || math.Abs(*updated.WeekKWh-0.08) > 1e-9 {
+		t.Fatalf("month counter delta should be included in the current week: %+v", updated)
+	}
+	if !strings.Contains(updated.TodaySource, "月累计差值") {
+		t.Fatalf("expected monthly counter source label, got %q", updated.TodaySource)
+	}
+}
+
+func TestRecordEnergySampleUsesRecentPowerWhenCloudOmitsPower(t *testing.T) {
+	a := testApp(t)
+	power := 60.0
+	if err := a.store.putDevice(Device{
+		ID: "meter-stale-cloud", Name: "云端不推送功率的插座", Protocol: "ewelink-cloud", Online: true,
+		Energy: &EnergyMetrics{Supported: true, PowerW: &power, Source: "eWeLink"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 11, 24, 12, 0, 0, 0, time.Local)
+	if err := a.store.recordEnergySample("meter-stale-cloud", &EnergyMetrics{Supported: true, PowerW: &power}, start); err != nil {
+		t.Fatal(err)
+	}
+	// A later status response carries voltage/current but no fresh power value.
+	voltage := 230.0
+	current := 0.3
+	if err := a.store.recordEnergySample("meter-stale-cloud", &EnergyMetrics{Supported: true, VoltageV: &voltage, CurrentA: &current}, start.Add(5*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	energy := a.store.snapshot().Devices[0].Energy
+	want := 60.0 * 5.0 / 60.0 / 1000.0
+	if energy.TodayKWh == nil || math.Abs(*energy.TodayKWh-want) > 1e-9 {
+		t.Fatalf("today estimate = %v, want %.6f kWh", energy.TodayKWh, want)
+	}
+	if energy.WeekKWh == nil || math.Abs(*energy.WeekKWh-want) > 1e-9 {
+		t.Fatalf("week estimate = %v, want %.6f kWh", energy.WeekKWh, want)
+	}
+	if !strings.Contains(energy.TodaySource, "最近一次有效读数") {
+		t.Fatalf("expected stale-power estimate label, got %q", energy.TodaySource)
+	}
+}
+
+func TestRecordEnergySampleDoesNotExtendStalePowerBeyondLimit(t *testing.T) {
+	a := testApp(t)
+	power := 60.0
+	if err := a.store.putDevice(Device{
+		ID: "meter-power-expired", Name: "过期功率样本插座", Protocol: "ewelink-cloud", Online: true,
+		Energy: &EnergyMetrics{Supported: true, PowerW: &power, Source: "eWeLink"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 11, 24, 12, 0, 0, 0, time.Local)
+	if err := a.store.recordEnergySample("meter-power-expired", &EnergyMetrics{Supported: true, PowerW: &power}, start); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.recordEnergySample("meter-power-expired", &EnergyMetrics{Supported: true}, start.Add(20*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	energy := a.store.snapshot().Devices[0].Energy
+	if energy.TodayKWh == nil || *energy.TodayKWh != 0 {
+		t.Fatalf("stale power must not be extrapolated beyond 15 minutes: %+v", energy)
+	}
+}
+
+func TestRecordEnergySamplePreservesImportedCurrentDayAndCloudWeekTotals(t *testing.T) {
+	a := testApp(t)
+	power := 63.0
+	today := 1.23
+	week := 4.56
+	start := time.Date(2026, 11, 24, 12, 0, 0, 0, time.Local)
+	if err := a.store.putDevice(Device{
+		ID: "meter-imported-counters", Name: "已有云端统计插座", Protocol: "ewelink-cloud", Online: true,
+		Energy: &EnergyMetrics{Supported: true, PowerW: &power, TodayKWh: &today, WeekKWh: &week, WeekSource: "eWeLink 云端周统计", UpdatedAt: start},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.store.recordEnergySample("meter-imported-counters", &EnergyMetrics{Supported: true, PowerW: &power}, start.Add(5*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	energy := a.store.snapshot().Devices[0].Energy
+	if energy.TodayKWh == nil || math.Abs(*energy.TodayKWh-today) > 1e-9 {
+		t.Fatalf("same-day cloud daily total should be retained: %+v", energy)
+	}
+	if energy.WeekKWh == nil || math.Abs(*energy.WeekKWh-week) > 1e-9 {
+		t.Fatalf("current-week cloud total should not be replaced by a partial local sum: %+v", energy)
 	}
 }

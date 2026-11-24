@@ -190,6 +190,18 @@ func xiaomiProbeAuth(ctx context.Context, s providerSecret) string {
 }
 
 func xiaomiFetchDevices(ctx context.Context, s providerSecret) ([]Device, error) {
+	return xiaomiFetchDevicesWithOptions(ctx, s, true, false)
+}
+
+// xiaomiFetchDevicesForStateRefresh reads the online flag and current MIoT
+// properties without querying model-specific historical energy endpoints.
+// It is used by the background state poller; interactive/manual sync still
+// uses xiaomiFetchDevices and includes the historical energy lookup.
+func xiaomiFetchDevicesForStateRefresh(ctx context.Context, s providerSecret) ([]Device, error) {
+	return xiaomiFetchDevicesWithOptions(ctx, s, false, true)
+}
+
+func xiaomiFetchDevicesWithOptions(ctx context.Context, s providerSecret, includeEnergyStats, onlineOnly bool) ([]Device, error) {
 	base := xiaomiAPIBase(s.Region)
 	apiURL := base + "/app/home/device_list"
 	rawData := []byte(`{"getVirtualModel":true,"getHuamiDevices":1,"get_split_device":false,"support_smart_home":true}`)
@@ -310,7 +322,7 @@ func xiaomiFetchDevices(ctx context.Context, s providerSecret) ([]Device, error)
 	}
 	// Read useful read-only MIoT properties for every supported device class.
 	// Unsupported models remain in the list with their online/offline state.
-	xiaomiPopulateDeviceDetails(ctx, s, out)
+	xiaomiPopulateDeviceDetailsWithOptions(ctx, s, out, includeEnergyStats, onlineOnly)
 	return out, nil
 }
 
@@ -1120,6 +1132,10 @@ func miotFormatAttribute(ref miotDevicePropertyRef, raw any) string {
 }
 
 func xiaomiPopulateDeviceDetails(ctx context.Context, secret providerSecret, devices []Device) {
+	xiaomiPopulateDeviceDetailsWithOptions(ctx, secret, devices, true, false)
+}
+
+func xiaomiPopulateDeviceDetailsWithOptions(ctx context.Context, secret providerSecret, devices []Device, includeEnergyStats, onlineOnly bool) {
 	if len(devices) == 0 {
 		return
 	}
@@ -1156,7 +1172,7 @@ func xiaomiPopulateDeviceDetails(ctx context.Context, secret providerSecret, dev
 	sem := make(chan struct{}, 4)
 	var wg sync.WaitGroup
 	for i := range devices {
-		if types[i] == "" || devices[i].RemoteID == "" {
+		if types[i] == "" || devices[i].RemoteID == "" || (onlineOnly && !devices[i].Online) {
 			continue
 		}
 		wg.Add(1)
@@ -1200,7 +1216,7 @@ func xiaomiPopulateDeviceDetails(ctx context.Context, secret providerSecret, dev
 			}
 			// The daily/weekly history API uses model-specific statistic keys;
 			// it is independent of the live MIoT property read above.
-			if miotMeterEligible(devices[index].Category) {
+			if includeEnergyStats && miotMeterEligible(devices[index].Category) {
 				today, week, _ := xiaomiFetchEnergyStats(deviceCtx, secret, devices[index].RemoteID, devices[index].Model, time.Now())
 				if today != nil || week != nil {
 					if devices[index].Energy == nil {

@@ -213,6 +213,14 @@ func ewelinkFetchDevicesAndKeys(ctx context.Context, s providerSecret) ([]Device
 	return ewelinkFetchDevicesWithClientAndKeys(ctx, s, &http.Client{Timeout: 30 * time.Second}, ewelinkHost(s.Region))
 }
 
+// ewelinkFetchDevicesForStateRefresh explicitly asks the status endpoint for
+// every online device. The normal account-sync path remains conservative, but
+// periodic polling must not rely only on the possibly cached params field in
+// the device-list response after a user toggles a switch in another app.
+func ewelinkFetchDevicesForStateRefresh(ctx context.Context, s providerSecret) ([]Device, map[string]string, error) {
+	return ewelinkFetchDevicesWithClientAndKeysOptions(ctx, s, &http.Client{Timeout: 35 * time.Second}, ewelinkHost(s.Region), true)
+}
+
 // ewelinkFetchDevicesWithClient is kept as a small test seam for the official list endpoint.
 func ewelinkFetchDevicesWithClient(ctx context.Context, s providerSecret, client *http.Client, baseURL string) ([]Device, error) {
 	devices, _, err := ewelinkFetchDevicesWithClientAndKeys(ctx, s, client, baseURL)
@@ -221,6 +229,10 @@ func ewelinkFetchDevicesWithClient(ctx context.Context, s providerSecret, client
 
 // ewelinkFetchDevicesWithClientAndKeys uses the documented GET /v2/device/thing list endpoint.
 func ewelinkFetchDevicesWithClientAndKeys(ctx context.Context, s providerSecret, client *http.Client, baseURL string) ([]Device, map[string]string, error) {
+	return ewelinkFetchDevicesWithClientAndKeysOptions(ctx, s, client, baseURL, false)
+}
+
+func ewelinkFetchDevicesWithClientAndKeysOptions(ctx context.Context, s providerSecret, client *http.Client, baseURL string, forceStatusRefresh bool) ([]Device, map[string]string, error) {
 	endpoint := strings.TrimRight(baseURL, "/") + "/v2/device/thing?lang=cn&num=0"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -268,10 +280,13 @@ func ewelinkFetchDevicesWithClientAndKeys(ctx context.Context, s providerSecret,
 	// Query its status once during sync so supported switches are not
 	// incorrectly classified as read-only. Keep concurrency and timeout low.
 	var statusWG sync.WaitGroup
-	statusSem := make(chan struct{}, 4)
+	// The official API asks clients to leave at least 500 ms between calls
+	// to the same interface. Serialize and pace optional status lookups.
+	statusSem := make(chan struct{}, 1)
+	var lastStatusRequest time.Time
 	for i := range env.Data.ThingList {
 		item := &env.Data.ThingList[i]
-		needsStatus := len(item.ItemData.Params) == 0
+		needsStatus := forceStatusRefresh || len(item.ItemData.Params) == 0
 		if ewelinkModelHasMeter(item.ItemData.ProductModel) && (!ewelinkHasMeterReadings(item.ItemData.Params) || !ewelinkHasPeriodEnergyReadings(item.ItemData.Params)) {
 			// Instant power alone is not a daily/weekly energy counter. Query the
 			// status endpoint when period totals are absent, even if watts exist.
@@ -285,8 +300,11 @@ func ewelinkFetchDevicesWithClientAndKeys(ctx context.Context, s providerSecret,
 			defer statusWG.Done()
 			statusSem <- struct{}{}
 			defer func() { <-statusSem }()
-			statusCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			statusCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 			defer cancel()
+			if waitErr := waitEwelinkStatusInterval(statusCtx, &lastStatusRequest); waitErr != nil {
+				return
+			}
 			deviceID := env.Data.ThingList[index].ItemData.DeviceID
 			if params, statusErr := ewelinkGetDeviceStatus(statusCtx, s, deviceID, client, baseURL); statusErr == nil && len(params) > 0 {
 				env.Data.ThingList[index].ItemData.Params = params
@@ -325,6 +343,27 @@ func ewelinkFetchDevicesWithClientAndKeys(ctx context.Context, s providerSecret,
 		out = append(out, dev)
 	}
 	return out, keys, nil
+}
+
+const ewelinkStatusMinInterval = 600 * time.Millisecond
+
+func waitEwelinkStatusInterval(ctx context.Context, lastRequest *time.Time) error {
+	if lastRequest != nil && !lastRequest.IsZero() {
+		wait := time.Until(lastRequest.Add(ewelinkStatusMinInterval))
+		if wait > 0 {
+			timer := time.NewTimer(wait)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+	if lastRequest != nil {
+		*lastRequest = time.Now()
+	}
+	return nil
 }
 
 func ewelinkGetDeviceStatus(ctx context.Context, s providerSecret, deviceID string, client *http.Client, baseURL string) (map[string]any, error) {
@@ -367,12 +406,13 @@ func ewelinkHasMeterReadings(params map[string]any) bool {
 	return findMetric(params, "power", "apower", "active_power", "electric_power", "power_w", "power_1") != nil ||
 		findMetric(params, "voltage", "voltage_v", "voltage_1") != nil ||
 		findMetric(params, "current", "current_a", "current_1") != nil ||
+		findMetric(params, "dailyKwh", "dayKwh", "todayKwh", "weekKwh", "weeklyKwh", "monthlyKwh", "monthKwh") != nil ||
 		findMetric(params, "energy_day", "energyday", "daily_energy", "today_energy", "today_kwh", "energy_week", "energy_month", "energy_year", "energy", "energy_1", "energy_2") != nil
 }
 
 func ewelinkHasPeriodEnergyReadings(params map[string]any) bool {
-	hasToday := findExactMetric(params, "dayKwh") != nil || findMetric(params, "energy_day", "energyday", "daily_energy", "today_energy", "today_kwh") != nil
-	hasWeek := findExactMetric(params, "weekKwh") != nil || findMetric(params, "energy_week", "energyweek", "weekly_energy", "week_kwh") != nil
+	hasToday := findMetric(params, "dailyKwh", "dayKwh", "todayKwh", "energy_day", "energyday", "daily_energy", "today_energy", "today_kwh") != nil
+	hasWeek := findMetric(params, "weekKwh", "weeklyKwh", "energy_week", "energyweek", "weekly_energy", "week_kwh") != nil
 	return hasToday && hasWeek
 }
 

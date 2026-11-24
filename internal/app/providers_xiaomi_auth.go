@@ -252,16 +252,12 @@ func (m *integrationManager) xiaomiSubmit(ctx context.Context, client *http.Clie
 		m.xiaomi[pendingID] = pending
 		m.mu.Unlock()
 		time.AfterFunc(10*time.Minute, func() { m.deleteXiaomiPending(pendingID) })
-		result, verifyErr := m.xiaomiSendVerifyCode(ctx, pendingID, "", false)
+		result, verifyErr := m.xiaomiSendVerifyCode(ctx, pendingID, "", false, 0)
 		if verifyErr != nil {
-			// Keep the original CookieJar and identity context. The UI can retry
-			// only the discovery/send step; it must not submit the account password
-			// again and create a second Xiaomi security challenge.
-			return map[string]any{
-				"verifyPending": true,
-				"challengeId":   pendingID,
-				"message":       "小米已要求短信/邮箱安全验证，但暂时无法读取验证渠道。当前登录会话已保留，请使用下方按钮重试验证流程，不要重新登录。详情：" + verifyErr.Error(),
-			}, nil
+			// Keep the original CookieJar and identity context. The UI retries
+			// this same challenge and may switch between channels already offered
+			// by Xiaomi; do not submit the account password again.
+			return m.xiaomiVerifyPendingResult(pendingID, pending, verifyErr), nil
 		}
 		return result, nil
 	}
@@ -530,7 +526,7 @@ func xiaomiCookieValue(client *http.Client, names ...string) string {
 	return ""
 }
 
-func (m *integrationManager) xiaomiSendVerifyCode(ctx context.Context, id, captcha string, resend bool) (map[string]any, error) {
+func (m *integrationManager) xiaomiSendVerifyCode(ctx context.Context, id, captcha string, resend bool, requestedFlag int) (map[string]any, error) {
 	m.mu.Lock()
 	p := m.xiaomi[id]
 	m.mu.Unlock()
@@ -620,6 +616,9 @@ func (m *integrationManager) xiaomiSendVerifyCode(ctx context.Context, id, captc
 	}
 
 	flag := p.VerifyFlag
+	if requestedFlag != 0 {
+		flag = requestedFlag
+	}
 	valid := false
 	for _, x := range p.IdentityOptions {
 		if x == flag {
@@ -627,6 +626,9 @@ func (m *integrationManager) xiaomiSendVerifyCode(ctx context.Context, id, captc
 		}
 	}
 	if !valid {
+		if requestedFlag != 0 {
+			return nil, errors.New("所选的小米验证方式不在当前账号提供的验证渠道中")
+		}
 		flag = p.IdentityOptions[0]
 	}
 	if flag != 4 && flag != 8 {
@@ -689,7 +691,11 @@ func (m *integrationManager) xiaomiSendVerifyCode(ctx context.Context, id, captc
 	code := intValue(sendData["code"], -1)
 	if code == 0 {
 		p.TicketSent = true
-		return map[string]any{"verifyRequired": true, "challengeId": id, "channel": channel, "message": map[bool]string{true: "短信验证码已发送，请查收短信", false: "邮箱验证码已发送，请查收邮件"}[flag == 4]}, nil
+		return map[string]any{
+			"verifyRequired": true, "challengeId": id, "channel": channel,
+			"selectedFlag": flag, "channels": xiaomiVerifyChannelOptions(p),
+			"message": map[bool]string{true: "短信验证码已发送，请查收短信", false: "邮箱验证码已发送，请查收邮件"}[flag == 4],
+		}, nil
 	}
 	if code == 87001 && stringValue(sendData["captchaUrl"]) != "" {
 		capURL := stringValue(sendData["captchaUrl"])
@@ -723,7 +729,58 @@ func (m *integrationManager) xiaomiSendVerifyCode(ctx context.Context, id, captc
 		p.IdentityCaptcha = true
 		return map[string]any{"identityCaptcha": true, "challengeId": id, "captchaImage": "data:image/png;base64," + p.CaptchaImage, "message": "小米发送验证码前要求图形验证，请输入图片字符"}, nil
 	}
-	return nil, fmt.Errorf("小米发送%s验证码失败（%d）：%s", map[int]string{4: "短信", 8: "邮箱"}[flag], code, firstNonEmpty(stringValue(sendData["description"]), stringValue(sendData["desc"]), "请稍后重试"))
+	channelLabel := map[int]string{4: "短信", 8: "邮箱"}[flag]
+	description := firstNonEmpty(stringValue(sendData["description"]), stringValue(sendData["desc"]), "请稍后重试")
+	if code == 70022 {
+		return nil, fmt.Errorf("小米%s发送接口拒绝本次请求（70022）：%s", channelLabel, description)
+	}
+	return nil, fmt.Errorf("小米发送%s验证码失败（%d）：%s", channelLabel, code, description)
+}
+
+func xiaomiVerifyChannelOptions(p *xiaomiPending) []map[string]any {
+	if p == nil {
+		return []map[string]any{}
+	}
+	options := make([]map[string]any, 0, len(p.IdentityOptions))
+	for _, flag := range p.IdentityOptions {
+		if flag == 4 {
+			options = append(options, map[string]any{"flag": 4, "label": "短信验证", "channel": "Phone"})
+		} else if flag == 8 {
+			options = append(options, map[string]any{"flag": 8, "label": "邮箱验证", "channel": "Email"})
+		}
+	}
+	return options
+}
+
+func (m *integrationManager) xiaomiVerifyPendingResult(id string, p *xiaomiPending, sendErr error) map[string]any {
+	message := "小米已要求安全验证，但当前步骤未完成。登录会话已保留，请在下方切换验证方式或重试，不要重新输入账号密码。详情：" + sendErr.Error()
+	if strings.Contains(sendErr.Error(), "70022") {
+		channel := firstNonEmpty(p.VerifyChannel, "Phone")
+		channelLabel := map[string]string{"Phone": "短信", "Email": "邮箱"}[channel]
+		if channelLabel == "" {
+			channelLabel = channel
+		}
+		if channel == "Email" {
+			message = "小米已经成功识别邮箱验证渠道，但邮箱验证码发送阶段被小米拒绝（70022）。请检查邮箱拦截、垃圾邮件规则或发送频控；如账号提供短信验证，可切换短信，或稍后再试。错误码 70022 没有公开的唯一原因。"
+		} else {
+			message = fmt.Sprintf("小米已经成功识别验证渠道（%s），但验证码发送阶段被小米拒绝（70022）。如果其他手机号可以收到验证码，说明短信服务并非完全不可用；当前绑定安全手机号的 24 小时发送额度、号码风控、运营商路由或短信退订拦截更值得排查。小米官方说明同一手机号 24 小时内短信验证码通常最多 5 次（中国大陆）或 3 次（其他国家/地区）；达到上限后需等待 24 小时。请勿连续重发；如当前账号同时提供邮箱验证，可在本次会话中切换邮箱。70022 本身没有公开的唯一错误码释义，不能仅凭它断定一定是超频。", channelLabel)
+		}
+	} else if strings.Contains(sendErr.Error(), "读取小米验证方式") || strings.Contains(sendErr.Error(), "解析小米验证方式") || strings.Contains(sendErr.Error(), "选择小米验证渠道") {
+		message = "小米已要求短信/邮箱安全验证，但读取或选择验证渠道失败。当前登录会话已保留，可以在下方重试；不要重新输入密码。详情：" + sendErr.Error()
+	}
+	return map[string]any{
+		"verifyPending": true,
+		"challengeId":   id,
+		"message":       message,
+		"channels":      xiaomiVerifyChannelOptions(p),
+		"selectedFlag":  p.VerifyFlag,
+		"errorCode": func() int {
+			if strings.Contains(sendErr.Error(), "70022") {
+				return 70022
+			}
+			return 0
+		}(),
+	}
 }
 
 // Legacy form builder retained for regression coverage; OTP completion no longer re-posts serviceLoginAuth2.

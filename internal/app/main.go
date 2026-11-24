@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -29,8 +30,15 @@ import (
 //go:embed web/*
 var webFiles embed.FS
 
-// version is overridden by the Makefile for release builds.
-var version = "0.2.11"
+// Build metadata is injected by Makefile from the current Git repository.
+// A source ZIP without .git metadata intentionally reports commit count 0.
+var (
+	version     = "0.2.0"
+	buildDate   = "source"
+	commitCount = "0"
+	gitHash     = ""
+	gitMessage  = "source archive"
+)
 
 type DeviceChannel struct {
 	Outlet     int    `json:"outlet"`
@@ -74,18 +82,20 @@ type DeviceControlInput struct {
 }
 
 type EnergyMetrics struct {
-	Supported  bool      `json:"supported"`
-	PowerW     *float64  `json:"powerW,omitempty"`
-	VoltageV   *float64  `json:"voltageV,omitempty"`
-	CurrentA   *float64  `json:"currentA,omitempty"`
-	TodayKWh   *float64  `json:"todayKWh,omitempty"`
-	WeekKWh    *float64  `json:"weekKWh,omitempty"`
-	MonthKWh   *float64  `json:"monthKWh,omitempty"`
-	YearKWh    *float64  `json:"yearKWh,omitempty"`
-	TotalKWh   *float64  `json:"totalKWh,omitempty"`
-	HistoryKWh *float64  `json:"historyKWh,omitempty"`
-	Source     string    `json:"source,omitempty"`
-	UpdatedAt  time.Time `json:"updatedAt,omitempty"`
+	Supported   bool      `json:"supported"`
+	PowerW      *float64  `json:"powerW,omitempty"`
+	VoltageV    *float64  `json:"voltageV,omitempty"`
+	CurrentA    *float64  `json:"currentA,omitempty"`
+	TodayKWh    *float64  `json:"todayKWh,omitempty"`
+	WeekKWh     *float64  `json:"weekKWh,omitempty"`
+	MonthKWh    *float64  `json:"monthKWh,omitempty"`
+	YearKWh     *float64  `json:"yearKWh,omitempty"`
+	TotalKWh    *float64  `json:"totalKWh,omitempty"`
+	HistoryKWh  *float64  `json:"historyKWh,omitempty"`
+	Source      string    `json:"source,omitempty"`
+	TodaySource string    `json:"todaySource,omitempty"`
+	WeekSource  string    `json:"weekSource,omitempty"`
+	UpdatedAt   time.Time `json:"updatedAt,omitempty"`
 }
 
 type Device struct {
@@ -140,12 +150,23 @@ type LogEntry struct {
 	At      time.Time `json:"at"`
 }
 
+type EnergyAccumulator struct {
+	Days             map[string]float64 `json:"days"`
+	LastPowerW       *float64           `json:"lastPowerW,omitempty"`
+	LastSample       time.Time          `json:"lastSample,omitempty"`
+	LastIntegratedAt time.Time          `json:"lastIntegratedAt,omitempty"`
+	LastMonthKWh     *float64           `json:"lastMonthKWh,omitempty"`
+	LastMonthAt      time.Time          `json:"lastMonthAt,omitempty"`
+}
+
 type diskState struct {
-	Devices    []Device    `json:"devices"`
-	Accounts   []Account   `json:"accounts"`
-	Discovery  []Discovery `json:"discovery"`
-	Logs       []LogEntry  `json:"logs"`
-	FirstRunAt time.Time   `json:"firstRunAt"`
+	Devices        []Device                     `json:"devices"`
+	Accounts       []Account                    `json:"accounts"`
+	Discovery      []Discovery                  `json:"discovery"`
+	Logs           []LogEntry                   `json:"logs"`
+	EnergyHistory  map[string]EnergyAccumulator `json:"energyHistory,omitempty"`
+	DeletedDevices map[string]bool              `json:"deletedDevices,omitempty"`
+	FirstRunAt     time.Time                    `json:"firstRunAt"`
 }
 
 type Store struct {
@@ -184,6 +205,12 @@ func newStore(dir string) (*Store, error) {
 		if s.data.Logs == nil {
 			s.data.Logs = []LogEntry{}
 		}
+		if s.data.EnergyHistory == nil {
+			s.data.EnergyHistory = map[string]EnergyAccumulator{}
+		}
+		if s.data.DeletedDevices == nil {
+			s.data.DeletedDevices = map[string]bool{}
+		}
 		// Migration: remove the four fake demo devices from older releases.
 		// Also enable the real eWeLink switch controls that earlier versions
 		// imported as read-only despite having a valid switch state.
@@ -218,11 +245,13 @@ func newStore(dir string) (*Store, error) {
 	}
 	now := time.Now()
 	s.data = diskState{
-		FirstRunAt: now,
-		Devices:    []Device{},
-		Accounts:   []Account{},
-		Discovery:  []Discovery{},
-		Logs:       []LogEntry{},
+		FirstRunAt:     now,
+		Devices:        []Device{},
+		Accounts:       []Account{},
+		Discovery:      []Discovery{},
+		Logs:           []LogEntry{},
+		EnergyHistory:  map[string]EnergyAccumulator{},
+		DeletedDevices: map[string]bool{},
 	}
 	s.addLogLocked("info", "GoHome 初始化完成，等待真实品牌设备接入")
 	return s, s.saveLocked()
@@ -306,6 +335,20 @@ func (s *Store) snapshot() diskState {
 	v.Accounts = append([]Account{}, s.data.Accounts...)
 	v.Discovery = append([]Discovery{}, s.data.Discovery...)
 	v.Logs = append([]LogEntry{}, s.data.Logs...)
+	v.DeletedDevices = make(map[string]bool, len(s.data.DeletedDevices))
+	for key, deleted := range s.data.DeletedDevices {
+		v.DeletedDevices[key] = deleted
+	}
+	v.EnergyHistory = make(map[string]EnergyAccumulator, len(s.data.EnergyHistory))
+	for key, history := range s.data.EnergyHistory {
+		copyHistory := EnergyAccumulator{Days: make(map[string]float64, len(history.Days)), LastSample: history.LastSample, LastIntegratedAt: history.LastIntegratedAt, LastMonthAt: history.LastMonthAt}
+		for day, value := range history.Days {
+			copyHistory.Days[day] = value
+		}
+		copyHistory.LastPowerW = cloneFloat(history.LastPowerW)
+		copyHistory.LastMonthKWh = cloneFloat(history.LastMonthKWh)
+		v.EnergyHistory[key] = copyHistory
+	}
 	return v
 }
 
@@ -324,13 +367,120 @@ func (s *Store) putDevice(d Device) error {
 	return s.saveLocked()
 }
 
+// refreshDeviceStates updates only the live snapshot for devices that are
+// already imported. It deliberately does not add newly discovered devices or
+// resurrect user-hidden devices; those remain the job of explicit account sync.
+func (s *Store) refreshDeviceStates(accountID string, incoming []Device) (int, error) {
+	if len(incoming) == 0 {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := 0
+	now := time.Now()
+	for _, remote := range incoming {
+		for i := range s.data.Devices {
+			current := &s.data.Devices[i]
+			if current.ID != remote.ID || current.AccountID != accountID {
+				continue
+			}
+			before := *current
+			current.Online = remote.Online
+			if remote.Power != nil {
+				current.Power = cloneBool(remote.Power)
+			}
+			if len(remote.Channels) > 0 {
+				current.Channels = mergeDeviceChannels(current.Channels, remote.Channels)
+			}
+			if len(remote.Controls) > 0 {
+				current.Controls = mergeDeviceControls(current.Controls, remote.Controls)
+				current.CanControl = remote.CanControl
+			}
+			if len(remote.Attributes) > 0 {
+				current.Attributes = append([]DeviceAttribute(nil), remote.Attributes...)
+				current.Value = remote.Value
+			}
+			if remote.Energy != nil {
+				energy := *remote.Energy
+				mergeMissingEnergyMetrics(&energy, current.Energy)
+				current.Energy = &energy
+			}
+			if remote.Online && (current.LastSeen.IsZero() || now.Sub(current.LastSeen) >= 5*time.Minute || !before.Online) {
+				current.LastSeen = now
+			}
+			if !reflect.DeepEqual(before, *current) {
+				changed++
+			}
+			break
+		}
+	}
+	if changed == 0 {
+		return 0, nil
+	}
+	return changed, s.saveLocked()
+}
+
+func cloneBool(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func mergeDeviceChannels(old, incoming []DeviceChannel) []DeviceChannel {
+	byOutlet := make(map[int]DeviceChannel, len(old))
+	for _, channel := range old {
+		byOutlet[channel.Outlet] = channel
+	}
+	merged := make([]DeviceChannel, 0, len(incoming))
+	for _, channel := range incoming {
+		if previous, ok := byOutlet[channel.Outlet]; ok {
+			if channel.Name == "" {
+				channel.Name = previous.Name
+			}
+			if channel.Power == nil {
+				channel.Power = cloneBool(previous.Power)
+			}
+			channel.CanControl = channel.CanControl || previous.CanControl
+		}
+		channel.Power = cloneBool(channel.Power)
+		merged = append(merged, channel)
+	}
+	return merged
+}
+
+func mergeDeviceControls(old, incoming []DeviceControl) []DeviceControl {
+	byID := make(map[string]DeviceControl, len(old))
+	for _, control := range old {
+		byID[control.ID] = control
+	}
+	merged := make([]DeviceControl, 0, len(incoming))
+	for _, control := range incoming {
+		if previous, ok := byID[control.ID]; ok && control.Value == nil {
+			control.Value = previous.Value
+		}
+		merged = append(merged, control)
+	}
+	return merged
+}
+
 func (s *Store) deleteDevice(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, d := range s.data.Devices {
 		if d.ID == id {
+			if d.AccountID != "" {
+				if s.data.DeletedDevices == nil {
+					s.data.DeletedDevices = map[string]bool{}
+				}
+				s.data.DeletedDevices[deletedDeviceKey(d.AccountID, d.ID)] = true
+			}
+			if s.data.EnergyHistory != nil {
+				delete(s.data.EnergyHistory, d.ID)
+			}
 			s.data.Devices = append(s.data.Devices[:i], s.data.Devices[i+1:]...)
-			s.addLogLocked("info", "已删除设备："+d.Name)
+			s.addLogLocked("info", "已删除设备："+d.Name+"（普通同步不会恢复；重新登录账号后可重新同步）")
 			return s.saveLocked()
 		}
 	}
@@ -408,27 +558,44 @@ func (s *Store) setDiscovery(items []Discovery) error {
 }
 
 type App struct {
-	store        *Store
-	mux          *http.ServeMux
-	user         string
-	pass         string
-	integrations *integrationManager
+	store         *Store
+	mux           *http.ServeMux
+	authKey       []byte
+	authDisabled  bool // test-only bypass; production always uses the persistent cookie session.
+	loginMu       sync.Mutex
+	loginAttempts map[string]loginAttempt
+	integrations  *integrationManager
 }
 
 func newApp(s *Store) *App {
-	v, err := newVault(filepath.Dir(s.path))
+	dataDir := filepath.Dir(s.path)
+	v, err := newVault(dataDir)
 	if err != nil {
 		log.Fatalf("初始化凭证加密库失败: %v", err)
 	}
-	a := &App{store: s, mux: http.NewServeMux(), user: os.Getenv("GOHOME_USER"), pass: os.Getenv("GOHOME_PASSWORD")}
+	authKey, err := loadOrCreateSessionKey(dataDir)
+	if err != nil {
+		log.Fatalf("初始化登录 Cookie 密钥失败: %v", err)
+	}
+	a := &App{
+		store: s, mux: http.NewServeMux(), authKey: authKey,
+		loginAttempts: make(map[string]loginAttempt),
+	}
 	a.integrations = newIntegrationManager(s, v)
 	a.routes()
 	return a
 }
 
 func (a *App) routes() {
+	a.mux.HandleFunc("POST /api/auth/login", a.authLogin)
+	a.mux.HandleFunc("GET /api/auth/session", a.authSession)
+	a.mux.HandleFunc("POST /api/auth/logout", a.authLogout)
 	a.mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"ok": true, "app": "GoHome", "version": version, "time": time.Now()})
+		writeJSON(w, 200, map[string]any{
+			"ok": true, "app": "GoHome", "version": version,
+			"buildDate": buildDate, "commitCount": commitCount,
+			"gitHash": gitHash, "gitMessage": gitMessage, "time": time.Now(),
+		})
 	})
 	a.mux.HandleFunc("GET /api/overview", a.overview)
 	a.mux.HandleFunc("GET /api/devices", a.listDevices)
@@ -460,13 +627,13 @@ func (a *App) routes() {
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if a.user != "" || a.pass != "" {
-		u, p, ok := r.BasicAuth()
-		if !ok || u != a.user || p != a.pass {
-			w.Header().Set("WWW-Authenticate", `Basic realm="GoHome"`)
+	if !a.authDisabled && !a.isPublicAuthRequest(r) && !a.hasValidSession(r) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "登录状态已失效，请重新登录"})
+		} else {
 			http.Error(w, "需要登录", http.StatusUnauthorized)
-			return
 		}
+		return
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "same-origin")
@@ -518,8 +685,11 @@ func (a *App) apiDocs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":           "GoHome API",
 		"version":        "1.0",
-		"authentication": "HTTP Basic Auth when GOHOME_USER and GOHOME_PASSWORD are configured",
+		"authentication": "Persistent HttpOnly signed Cookie; POST /api/auth/login returns a long-lived gohome_session cookie",
 		"endpoints": []map[string]any{
+			{"method": "POST", "path": "/api/auth/login", "body": map[string]any{"username": "admin", "password": "123456"}, "description": "Create a persistent HttpOnly session cookie"},
+			{"method": "GET", "path": "/api/auth/session", "description": "Check whether the browser has a valid session cookie"},
+			{"method": "POST", "path": "/api/auth/logout", "description": "Clear the session cookie"},
 			{"method": "GET", "path": "/api/v1/devices", "description": "List synchronized devices and discovered controls"},
 			{"method": "GET", "path": "/api/v1/devices/{id}", "description": "Get one device, including writable MIoT properties and callable actions"},
 			{"method": "POST", "path": "/api/v1/devices/{id}/command", "body": map[string]any{"command": "turn_on | turn_off | toggle", "channel": "optional outlet number for multi-relay devices"}, "description": "Control a supported switch"},
@@ -1055,6 +1225,7 @@ func (a *App) xiaomiVerifySend(w http.ResponseWriter, r *http.Request) {
 		ChallengeID string `json:"challengeId"`
 		Captcha     string `json:"captcha"`
 		Resend      bool   `json:"resend"`
+		Flag        int    `json:"flag"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "请求格式错误")
@@ -1062,9 +1233,18 @@ func (a *App) xiaomiVerifySend(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
 	defer cancel()
-	result, err := a.integrations.xiaomiSendVerifyCode(ctx, in.ChallengeID, in.Captcha, in.Resend)
+	result, err := a.integrations.xiaomiSendVerifyCode(ctx, in.ChallengeID, in.Captcha, in.Resend, in.Flag)
 	if err != nil {
 		a.logIntegrationError("小米", "发送安全验证码", err)
+		if strings.Contains(err.Error(), "70022") {
+			a.integrations.mu.Lock()
+			pending := a.integrations.xiaomi[in.ChallengeID]
+			a.integrations.mu.Unlock()
+			if pending != nil {
+				writeJSON(w, http.StatusOK, a.integrations.xiaomiVerifyPendingResult(in.ChallengeID, pending, err))
+				return
+			}
+		}
 		fail(w, 502, err.Error())
 		return
 	}
@@ -1164,13 +1344,13 @@ func Run() {
 		addr = ":17880"
 	}
 	app := newApp(store)
+	statePollCtx, stopStatePoller := context.WithCancel(context.Background())
+	defer stopStatePoller()
+	go app.integrations.runProviderStatePoller(statePollCtx)
 	srv := &http.Server{Addr: addr, Handler: app, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("GoHome v%s 启动：%s", version, addr)
-	if app.user != "" || app.pass != "" {
-		log.Printf("HTTP Basic Auth 已启用，用户名：%s", app.user)
-	} else {
-		log.Printf("警告：未设置 GOHOME_USER/GOHOME_PASSWORD；请勿将服务暴露到公网")
-	}
+	log.Printf("Web 登录已启用；登录 Cookie 持久保存在浏览器和 data/gohome.session.key 中")
+	log.Printf("安全提示：默认密码为固定初始密码，请仅在可信局域网使用，不要将管理端口直接暴露到公网")
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
