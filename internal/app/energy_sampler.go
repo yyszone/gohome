@@ -379,7 +379,11 @@ func (s *Store) recordEnergySample(deviceID string, observed *EnergyMetrics, now
 		}
 		energy.UpdatedAt = now
 		device.Energy = energy
-		return s.saveLocked()
+		if err := s.saveLocked(); err != nil {
+			return err
+		}
+		s.liveRevision++
+		return nil
 	}
 	return nil
 }

@@ -280,6 +280,7 @@ func ewelinkFetchDevicesWithClientAndKeysOptions(ctx context.Context, s provider
 	// Query its status once during sync so supported switches are not
 	// incorrectly classified as read-only. Keep concurrency and timeout low.
 	var statusWG sync.WaitGroup
+	statusFresh := make([]bool, len(env.Data.ThingList))
 	// The official API asks clients to leave at least 500 ms between calls
 	// to the same interface. Serialize and pace optional status lookups.
 	statusSem := make(chan struct{}, 1)
@@ -306,8 +307,18 @@ func ewelinkFetchDevicesWithClientAndKeysOptions(ctx context.Context, s provider
 				return
 			}
 			deviceID := env.Data.ThingList[index].ItemData.DeviceID
-			if params, statusErr := ewelinkGetDeviceStatus(statusCtx, s, deviceID, client, baseURL); statusErr == nil && len(params) > 0 {
+			params, statusErr := ewelinkGetDeviceStatus(statusCtx, s, deviceID, client, baseURL)
+			if statusErr == nil {
+				statusFresh[index] = true
+				if params == nil {
+					params = map[string]any{}
+				}
 				env.Data.ThingList[index].ItemData.Params = params
+			} else if forceStatusRefresh {
+				// Do not fall back to the device-list's cached params during a live
+				// refresh. That is precisely how an old ON state can survive a failed
+				// status query and look current in the UI.
+				env.Data.ThingList[index].ItemData.Params = map[string]any{}
 			}
 		}(i)
 	}
@@ -315,7 +326,7 @@ func ewelinkFetchDevicesWithClientAndKeysOptions(ctx context.Context, s provider
 	statusWG.Wait()
 	out := make([]Device, 0, len(env.Data.ThingList))
 	keys := make(map[string]string)
-	for _, item := range env.Data.ThingList {
+	for itemIndex, item := range env.Data.ThingList {
 		d := item.ItemData
 		if item.ItemType != 1 && item.ItemType != 2 {
 			continue
@@ -338,7 +349,7 @@ func ewelinkFetchDevicesWithClientAndKeysOptions(ctx context.Context, s provider
 		// Single-relay devices expose params.switch; multi-relay devices
 		// commonly expose params.switches as [{outlet, switch}, ...].
 		canControl := power != nil || len(channels) > 0
-		dev := Device{ID: "ewelink-" + safeID(d.DeviceID), RemoteID: d.DeviceID, Name: firstNonEmpty(d.Name, d.ProductModel, d.DeviceID), Brand: brand, Model: d.ProductModel, Room: firstNonEmpty(d.Family.RoomID, "未分区"), Category: guessCategory(d.Name, d.ProductModel), Protocol: "ewelink-cloud", Online: d.Online, Power: power, Channels: channels, CanControl: canControl, Energy: parseEwelinkEnergyMetrics(d.Params, d.ProductModel), Attributes: parseEwelinkDeviceAttributes(d.Params), LastSeen: time.Now(), CreatedAt: time.Now()}
+		dev := Device{ID: "ewelink-" + safeID(d.DeviceID), RemoteID: d.DeviceID, Name: firstNonEmpty(d.Name, d.ProductModel, d.DeviceID), Brand: brand, Model: d.ProductModel, Room: firstNonEmpty(d.Family.RoomID, "未分区"), Category: guessCategory(d.Name, d.ProductModel), Protocol: "ewelink-cloud", Online: d.Online, Power: power, Channels: channels, CanControl: canControl, Energy: parseEwelinkEnergyMetrics(d.Params, d.ProductModel), Attributes: parseEwelinkDeviceAttributes(d.Params), LastSeen: time.Now(), CreatedAt: time.Now(), StateRead: statusFresh[itemIndex]}
 		dev.Value = summarizeDeviceAttributes(&dev)
 		out = append(out, dev)
 	}
@@ -391,6 +402,7 @@ func ewelinkGetDeviceStatus(ctx context.Context, s providerSecret, deviceID stri
 		Msg   string `json:"msg"`
 		Data  struct {
 			Params map[string]any `json:"params"`
+			Config map[string]any `json:"config"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &env); err != nil {
@@ -398,6 +410,9 @@ func ewelinkGetDeviceStatus(ctx context.Context, s providerSecret, deviceID stri
 	}
 	if env.Error != 0 {
 		return nil, fmt.Errorf("eWeLink 状态查询失败（%d）：%s", env.Error, env.Msg)
+	}
+	if len(env.Data.Params) == 0 && len(env.Data.Config) > 0 {
+		return env.Data.Config, nil
 	}
 	return env.Data.Params, nil
 }

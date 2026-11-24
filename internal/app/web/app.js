@@ -1,10 +1,83 @@
-const state = { devices: [], accounts: [], discovery: [], logs: [], page: 'overview', xiaomiChallengeId: '', xiaomiChallengeType: '', xiaomiVerifyFlag: 0 };
+const state = { devices: [], accounts: [], discovery: [], logs: [], page: 'overview', liveRevision: 0, xiaomiChallengeId: '', xiaomiChallengeType: '', xiaomiVerifyFlag: 0 };
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 // Older data files or empty Go slices may decode as null; keep UI collections safe.
 const asArray = value => Array.isArray(value) ? value : [];
+// Each browser tab owns an independent lease. Hidden/closed tabs release it;
+// the server stops all provider polling when no visible authenticated tab remains.
+const stateSyncClientId = (() => {
+  const random = () => Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const uuid = globalThis.crypto?.randomUUID?.();
+  return `web-${uuid || random()}-${Date.now().toString(36)}`;
+})();
+let stateSyncHeartbeat = null;
+let liveDeviceTimer = null;
+let liveDeviceBusy = false;
+let stateSyncRequest = null;
+let queuedStateSync = null;
+async function sendStateSyncActivity(active, keepalive=false) {
+  // Serialize changes but never drop a release request. Previously, a page
+  // becoming hidden while an active heartbeat was in flight could lose the
+  // `active:false` update and keep cloud polling alive until lease expiry.
+  queuedStateSync = { active, keepalive };
+  if (stateSyncRequest) return stateSyncRequest;
+  stateSyncRequest = (async () => {
+    while (queuedStateSync) {
+      const job = queuedStateSync;
+      queuedStateSync = null;
+      try {
+        await fetch('/api/state-sync/activity', {
+          method: 'POST', credentials: 'same-origin', cache: 'no-store', keepalive: job.keepalive,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId: stateSyncClientId, active: job.active })
+        });
+      } catch (_) {
+        // The server lease expires automatically if this tab disappears.
+      }
+    }
+  })();
+  try {
+    await stateSyncRequest;
+  } finally {
+    stateSyncRequest = null;
+    if (queuedStateSync) void sendStateSyncActivity(queuedStateSync.active, queuedStateSync.keepalive);
+  }
+}
+function shouldSyncProviderStates() {
+  return document.visibilityState === 'visible' && document.body.classList.contains('authenticated') && ['overview', 'devices'].includes(state.page);
+}
+function startLiveDeviceUpdates() {
+  if (!shouldSyncProviderStates()) return;
+  if (liveDeviceTimer) clearInterval(liveDeviceTimer);
+  // Lightweight AJAX: only the live state delta is fetched. Account, logs,
+  // discovery and full device control schemas are not reloaded every tick.
+  pollLiveDeviceStates(true);
+  liveDeviceTimer = setInterval(() => {
+    if (shouldSyncProviderStates()) pollLiveDeviceStates();
+  }, 2000);
+}
+function stopLiveDeviceUpdates() {
+  if (liveDeviceTimer) clearInterval(liveDeviceTimer);
+  liveDeviceTimer = null;
+}
+function startStateSyncActivity() {
+  if (!shouldSyncProviderStates()) return;
+  sendStateSyncActivity(true);
+  startLiveDeviceUpdates();
+  if (stateSyncHeartbeat) clearInterval(stateSyncHeartbeat);
+  stateSyncHeartbeat = setInterval(() => {
+    if (shouldSyncProviderStates()) sendStateSyncActivity(true);
+  }, 6000);
+}
+function stopStateSyncActivity() {
+  if (stateSyncHeartbeat) clearInterval(stateSyncHeartbeat);
+  stateSyncHeartbeat = null;
+  stopLiveDeviceUpdates();
+  sendStateSyncActivity(false, true);
+}
 
 function showLoginScreen(message='') {
+  stopStateSyncActivity();
   document.body.classList.remove('authenticated');
   $('#login-screen').hidden = false;
   if (message) {
@@ -15,9 +88,10 @@ function showLoginScreen(message='') {
 function enterApplication() {
   $('#login-screen').hidden = true;
   document.body.classList.add('authenticated');
+  startStateSyncActivity();
 }
 async function api(path, options={}) {
-  const opts = { ...options, credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } };
+  const opts = { ...options, credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } };
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && path !== '/api/auth/login') showLoginScreen(data.error || '登录状态已失效，请重新登录');
@@ -372,7 +446,9 @@ function renderDiscovery() {
   $('#discovery-list').innerHTML=items.map(d=>`<div class="discovery-row"><div class="discovery-glyph">⌁</div><div class="discovery-copy"><strong>${esc(d.name||d.service)}</strong><small>${esc(d.service)} · ${esc(d.host||'主机名未知')} · 网卡 ${esc(d.interface||'未知')}</small></div><span class="discovery-port">${esc(d.address||'未解析 IP')}${d.port?':'+d.port:''}</span></div>`).join('');
 }
 function showPage(name) {
-  state.page=name; $$('.page').forEach(p=>p.classList.toggle('active',p.id===`page-${name}`));
+  state.page=name;
+  if (shouldSyncProviderStates()) startStateSyncActivity(); else stopStateSyncActivity();
+  $$('.page').forEach(p=>p.classList.toggle('active',p.id===`page-${name}`));
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===name));
   const titles={overview:'总览',devices:'设备管理',integrations:'品牌接入',discovery:'局域网发现',logs:'运行日志'};
   $('#crumb-title').textContent=titles[name]||'总览'; $('#sidebar').classList.remove('open'); window.scrollTo({top:0,behavior:'smooth'});
@@ -384,11 +460,77 @@ async function loadAll() {
       api('/api/overview'), api('/api/devices'), api('/api/logs'), api('/api/accounts'), api('/api/discovery')
     ]);
     state.devices=asArray(devices); state.logs=asArray(logs); state.accounts=asArray(accounts); state.discovery=asArray(discovery);
+    state.liveRevision = 0; // force one small live snapshot after a full page load.
     $('#stat-total').textContent=overview.deviceCount; $('#stat-online').textContent=overview.onlineCount;
     $('#stat-on').textContent=overview.onCount; $('#stat-accounts').textContent=overview.accountCount;
     $('#online-rate').textContent=overview.deviceCount?`${Math.round(overview.onlineCount/overview.deviceCount*100)}% 在线率`:'暂无设备';
     renderDevices(); renderActivity('#overview-logs',state.logs,true); renderAccounts(); renderDiscovery(); renderLogs();
   } catch(e) { toast(e.message,'error'); }
+}
+function updateOverviewLiveCounters() {
+  const total = state.devices.length;
+  const online = state.devices.filter(d => d.online).length;
+  const on = state.devices.reduce((sum, d) => {
+    const channels = asArray(d.channels);
+    if (channels.length) return sum + channels.filter(ch => ch.power === true).length;
+    return sum + (d.power === true ? 1 : 0);
+  }, 0);
+  if ($('#stat-total')) $('#stat-total').textContent = String(total);
+  if ($('#stat-online')) $('#stat-online').textContent = String(online);
+  if ($('#stat-on')) $('#stat-on').textContent = String(on);
+  if ($('#online-rate')) $('#online-rate').textContent = total ? `${Math.round(online / total * 100)}% 在线率` : '暂无设备';
+}
+async function refreshLiveAfterControl() {
+  // A successful command updates the server-side live revision. Read only that
+  // delta; do not reload accounts, discovery, logs or rebuild the whole page.
+  if (shouldSyncProviderStates()) await pollLiveDeviceStates(true);
+  else await loadAll();
+}
+async function pollLiveDeviceStates(force = false) {
+  if (liveDeviceBusy || !shouldSyncProviderStates()) return;
+  liveDeviceBusy = true;
+  try {
+    const since = force ? 0 : state.liveRevision;
+    const result = await api(`/api/devices/live?since=${encodeURIComponent(since)}`);
+    if (!Array.isArray(result.devices)) return; // 204 = no change; keep the DOM untouched.
+    const byID = new Map(state.devices.map(device => [device.id, device]));
+    let changed = false;
+    for (const live of result.devices) {
+      const current = byID.get(live.id);
+      if (!current) continue;
+      const next = {
+        online: live.online,
+        power: live.power ?? null,
+        channels: asArray(live.channels),
+        energy: live.energy ?? null,
+        attributes: asArray(live.attributes),
+        value: live.value || '',
+        lastSeen: live.lastSeen || current.lastSeen,
+      };
+      const controlValues = asArray(live.controlValues);
+      for (const item of controlValues) {
+        const control = asArray(current.controls).find(candidate => candidate.id === item.id);
+        if (control && JSON.stringify(control.value) !== JSON.stringify(item.value)) {
+          control.value = item.value;
+          changed = true;
+        }
+      }
+      const oldFingerprint = JSON.stringify([current.online, current.power ?? null, current.channels || [], current.energy || null, current.attributes || [], current.value || '']);
+      const newFingerprint = JSON.stringify([next.online, next.power, next.channels, next.energy, next.attributes, next.value]);
+      if (oldFingerprint !== newFingerprint) changed = true;
+      Object.assign(current, next);
+    }
+    state.liveRevision = Number(result.revision || state.liveRevision || 0);
+    if (changed) {
+      renderDevices();
+      updateOverviewLiveCounters();
+    }
+  } catch (error) {
+    // Keep the page quiet on a transient poll error; normal API actions still
+    // surface their own errors. A stale revision will be retried next tick.
+  } finally {
+    liveDeviceBusy = false;
+  }
 }
 async function loadAccounts(){ try{state.accounts=asArray(await api('/api/accounts'));renderAccounts()}catch(e){toast(e.message,'error')} }
 async function loadDiscovery(){ try{state.discovery=asArray(await api('/api/discovery'));renderDiscovery()}catch(e){toast(e.message,'error')} }
@@ -448,12 +590,12 @@ document.addEventListener('click', async (e) => {
     if(add.dataset.action==='add-ewelink') askAccount('ewelink');
     return;
   }
-  const cmd=e.target.closest('[data-command]'); if(cmd){cmd.disabled=true;try{const body={command:cmd.dataset.command};if(cmd.dataset.channel!==undefined)body.channel=Number(cmd.dataset.channel);await api(`/api/devices/${encodeURIComponent(cmd.dataset.id)}/command`,{method:'POST',body:JSON.stringify(body)});await loadAll();toast('控制命令已发送','success')}catch(err){toast(err.message,'error')}finally{cmd.disabled=false}return;}
+  const cmd=e.target.closest('[data-command]'); if(cmd){cmd.disabled=true;try{const body={command:cmd.dataset.command};if(cmd.dataset.channel!==undefined)body.channel=Number(cmd.dataset.channel);await api(`/api/devices/${encodeURIComponent(cmd.dataset.id)}/command`,{method:'POST',body:JSON.stringify(body)});await refreshLiveAfterControl();toast('控制命令已发送','success')}catch(err){toast(err.message,'error')}finally{cmd.disabled=false}return;}
   const copyAPI=e.target.closest('[data-copy-device-api]'); if(copyAPI){const device=state.devices.find(d=>d.id===copyAPI.dataset.copyDeviceApi);if(!device){toast('设备已不存在，请刷新列表','error');return;}try{await copyText(buildDeviceAPIText(device));toast('设备 API 请求示例已复制','success')}catch(err){toast(err.message,'error')}return;}
   const deleteDevice=e.target.closest('[data-delete-device]'); if(deleteDevice){const device=state.devices.find(d=>d.id===deleteDevice.dataset.deleteDevice);if(!device){toast('设备已不存在，请刷新列表','error');return;}const ok=confirm(`确定永久删除“${device.name}”？普通设备同步不会重新添加；删除品牌账号并重新登录后，可以重新同步恢复。`);if(!ok)return;deleteDevice.disabled=true;try{await api(`/api/devices/${encodeURIComponent(device.id)}`,{method:'DELETE'});state.devices=state.devices.filter(d=>d.id!==device.id);renderDevices();toast('设备已删除；重新登录品牌账号后可恢复','success')}catch(err){toast(err.message,'error')}finally{deleteDevice.disabled=false}return;}
-  const prop=e.target.closest('[data-miot-property]'); if(prop){prop.disabled=true;try{const value=prop.dataset.value==='true';await api(`/api/v1/devices/${encodeURIComponent(prop.dataset.id)}/property`,{method:'POST',body:JSON.stringify({siid:Number(prop.dataset.siid),piid:Number(prop.dataset.piid),value})});await loadAll();toast('MIoT 属性写入成功','success')}catch(err){toast(err.message,'error')}finally{prop.disabled=false}return;}
-  const setProp=e.target.closest('[data-miot-set-property]'); if(setProp){setProp.disabled=true;try{const field=document.getElementById(setProp.dataset.inputId);if(!field)throw new Error('找不到属性输入框，请刷新设备列表');const format=String(setProp.dataset.format||'').toLowerCase();if(field.value.trim()==='')throw new Error('请先输入属性值');let value=field.value;if(/^(u?int|float|double)/.test(format)){value=Number(field.value);if(!Number.isFinite(value))throw new Error('请输入有效数字');}await api(`/api/v1/devices/${encodeURIComponent(setProp.dataset.id)}/property`,{method:'POST',body:JSON.stringify({siid:Number(setProp.dataset.siid),piid:Number(setProp.dataset.piid),value})});await loadAll();toast('MIoT 属性写入成功','success')}catch(err){toast(err.message,'error')}finally{setProp.disabled=false}return;}
-  const action=e.target.closest('[data-miot-action]'); if(action){action.disabled=true;try{const device=state.devices.find(d=>d.id===action.dataset.id);const control=asArray(device?.controls).find(c=>c.id===action.dataset.control);if(!control)throw new Error('动作能力已变化，请重新同步设备');const params=[];for(let i=0;i<asArray(control.inputs).length;i++){const input=control.inputs[i];const hint=input.options?.length?`可选：${input.options.map(x=>`${x.label}=${JSON.stringify(x.value)}`).join('、')}`:`格式：${input.format||'文本'}`;const initial=input.options?.length?String(input.options[0].value):['bool','boolean'].includes(String(input.format || '').toLowerCase())?'false':/^(u?int|float|double)/i.test(input.format||'')?'0':'';const entered=prompt(`${input.name}\n${hint}`,initial);if(entered===null)throw new Error('已取消操作');params.push(parsePromptValue(entered,input));}await api(`/api/v1/devices/${encodeURIComponent(action.dataset.id)}/action`,{method:'POST',body:JSON.stringify({siid:Number(action.dataset.siid),aiid:Number(action.dataset.aiid),params})});await loadAll();toast(`已执行：${control.name}`,'success')}catch(err){if(err.message!=='已取消操作')toast(err.message,'error')}finally{action.disabled=false}return;}
+  const prop=e.target.closest('[data-miot-property]'); if(prop){prop.disabled=true;try{const value=prop.dataset.value==='true';await api(`/api/v1/devices/${encodeURIComponent(prop.dataset.id)}/property`,{method:'POST',body:JSON.stringify({siid:Number(prop.dataset.siid),piid:Number(prop.dataset.piid),value})});await refreshLiveAfterControl();toast('MIoT 属性写入成功','success')}catch(err){toast(err.message,'error')}finally{prop.disabled=false}return;}
+  const setProp=e.target.closest('[data-miot-set-property]'); if(setProp){setProp.disabled=true;try{const field=document.getElementById(setProp.dataset.inputId);if(!field)throw new Error('找不到属性输入框，请刷新设备列表');const format=String(setProp.dataset.format||'').toLowerCase();if(field.value.trim()==='')throw new Error('请先输入属性值');let value=field.value;if(/^(u?int|float|double)/.test(format)){value=Number(field.value);if(!Number.isFinite(value))throw new Error('请输入有效数字');}await api(`/api/v1/devices/${encodeURIComponent(setProp.dataset.id)}/property`,{method:'POST',body:JSON.stringify({siid:Number(setProp.dataset.siid),piid:Number(setProp.dataset.piid),value})});await refreshLiveAfterControl();toast('MIoT 属性写入成功','success')}catch(err){toast(err.message,'error')}finally{setProp.disabled=false}return;}
+  const action=e.target.closest('[data-miot-action]'); if(action){action.disabled=true;try{const device=state.devices.find(d=>d.id===action.dataset.id);const control=asArray(device?.controls).find(c=>c.id===action.dataset.control);if(!control)throw new Error('动作能力已变化，请重新同步设备');const params=[];for(let i=0;i<asArray(control.inputs).length;i++){const input=control.inputs[i];const hint=input.options?.length?`可选：${input.options.map(x=>`${x.label}=${JSON.stringify(x.value)}`).join('、')}`:`格式：${input.format||'文本'}`;const initial=input.options?.length?String(input.options[0].value):['bool','boolean'].includes(String(input.format || '').toLowerCase())?'false':/^(u?int|float|double)/i.test(input.format||'')?'0':'';const entered=prompt(`${input.name}\n${hint}`,initial);if(entered===null)throw new Error('已取消操作');params.push(parsePromptValue(entered,input));}await api(`/api/v1/devices/${encodeURIComponent(action.dataset.id)}/action`,{method:'POST',body:JSON.stringify({siid:Number(action.dataset.siid),aiid:Number(action.dataset.aiid),params})});await refreshLiveAfterControl();toast(`已执行：${control.name}`,'success')}catch(err){if(err.message!=='已取消操作')toast(err.message,'error')}finally{action.disabled=false}return;}
   const sync=e.target.closest('[data-sync-account]'); if(sync){sync.disabled=true;sync.textContent='同步中';try{const result=await api(`/api/accounts/${encodeURIComponent(sync.dataset.syncAccount)}/sync`,{method:'POST',body:'{}'});await loadAll();toast(`设备同步完成：${result.deviceCount} 台`,'success')}catch(err){toast(err.message,'error')}finally{sync.disabled=false;sync.textContent='同步'}return;}
   const del=e.target.closest('[data-delete-account]'); if(del){if(!confirm('确定删除该品牌账号及其加密凭证、已导入设备吗？'))return;try{await api(`/api/accounts/${encodeURIComponent(del.dataset.deleteAccount)}`,{method:'DELETE'});await loadAll();toast('品牌账号及关联设备已删除','success')}catch(err){toast(err.message,'error')}return;}
 });
@@ -465,7 +607,7 @@ document.addEventListener('change', async e => {
   try{
     const value=JSON.parse(select.value);
     await api(`/api/v1/devices/${encodeURIComponent(select.dataset.id)}/property`,{method:'POST',body:JSON.stringify({siid:Number(select.dataset.siid),piid:Number(select.dataset.piid),value})});
-    await loadAll(); toast('设备属性已更新','success');
+    await refreshLiveAfterControl(); toast('设备属性已更新','success');
   }catch(err){toast(err.message,'error');}
   finally{select.disabled=false;}
 });
@@ -661,5 +803,15 @@ async function loadBuildMetadata(){
     node.setAttribute('aria-label', node.title.replaceAll('\n', '；'));
   } catch (_) { /* Keep the static footer when metadata is unavailable. */ }
 }
-// Poll local state lightly; no permanent browser socket or heavy client runtime.
-setInterval(()=>{if(document.visibilityState==='visible'&&document.body.classList.contains('authenticated'))loadAll()},15000);
+// Device state is updated in-place with a small AJAX delta while overview/devices is visible.
+// No whole-page reload and no full accounts/logs/discovery fetch on every tick.
+document.addEventListener('visibilitychange', () => {
+  if (shouldSyncProviderStates()) {
+    startStateSyncActivity();
+    pollLiveDeviceStates(true);
+  } else {
+    stopStateSyncActivity();
+  }
+});
+window.addEventListener('pagehide', () => stopStateSyncActivity());
+

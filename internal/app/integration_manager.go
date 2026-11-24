@@ -207,6 +207,11 @@ type integrationManager struct {
 	mu             sync.Mutex
 	energySampleMu sync.Mutex
 	providerPollMu sync.Mutex
+	activityMu     sync.Mutex
+	pageLeases     map[string]time.Time
+	pollRunning    bool
+	pollCancel     context.CancelFunc
+	lastStatePoll  time.Time
 	xiaomi         map[string]*xiaomiPending
 	energyWarnAt   map[string]time.Time
 }
@@ -215,6 +220,7 @@ func newIntegrationManager(s *Store, v *vault) *integrationManager {
 	return &integrationManager{
 		store:        s,
 		vault:        v,
+		pageLeases:   map[string]time.Time{},
 		xiaomi:       map[string]*xiaomiPending{},
 		energyWarnAt: map[string]time.Time{},
 	}

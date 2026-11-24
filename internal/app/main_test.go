@@ -182,6 +182,225 @@ func TestRefreshDeviceStatesAppliesExternalSwitchChanges(t *testing.T) {
 	}
 }
 
+func TestRefreshOnlineDeviceClearsStalePowerWhenProviderHasNoFreshValue(t *testing.T) {
+	a := testApp(t)
+	on := true
+	if err := a.store.putDevice(Device{ID: "stale-power", AccountID: "account-live", Online: true, Power: &on}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.store.refreshDeviceStates("account-live", []Device{{ID: "stale-power", Online: true, StateRead: false}}); err != nil {
+		t.Fatal(err)
+	}
+	got := a.store.snapshot().Devices[0]
+	if got.Power != nil {
+		t.Fatalf("stale ON must be cleared when live value is unavailable, got %v", *got.Power)
+	}
+}
+
+func TestLiveDevicesEndpointReturnsRevisionAndNoContentWhenUnchanged(t *testing.T) {
+	a := testApp(t)
+	on := true
+	if err := a.store.putDevice(Device{ID: "live-1", AccountID: "acct", Online: true, Power: &on, Controls: []DeviceControl{{ID: "switch-1", Kind: "property", Name: "电源开关", Value: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	first := httptest.NewRecorder()
+	a.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/api/devices/live?since=0", nil))
+	if first.Code != http.StatusOK {
+		t.Fatalf("first live status=%d body=%s", first.Code, first.Body.String())
+	}
+	var payload struct {
+		Revision uint64            `json:"revision"`
+		Devices  []LiveDeviceState `json:"devices"`
+	}
+	if err := json.Unmarshal(first.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Revision == 0 || len(payload.Devices) != 1 || payload.Devices[0].Power == nil || !*payload.Devices[0].Power {
+		t.Fatalf("unexpected live snapshot: %+v", payload)
+	}
+	if len(payload.Devices[0].ControlValues) != 1 || payload.Devices[0].ControlValues[0].ID != "switch-1" || payload.Devices[0].ControlValues[0].Value != true {
+		t.Fatalf("live snapshot should include only current MIoT property values: %+v", payload.Devices[0].ControlValues)
+	}
+	unchanged := httptest.NewRecorder()
+	a.ServeHTTP(unchanged, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/devices/live?since=%d", payload.Revision), nil))
+	if unchanged.Code != http.StatusNoContent {
+		t.Fatalf("unchanged live status=%d body=%s", unchanged.Code, unchanged.Body.String())
+	}
+	off := false
+	if _, err := a.store.refreshDeviceStates("acct", []Device{{ID: "live-1", Online: true, Power: &off, StateRead: true}}); err != nil {
+		t.Fatal(err)
+	}
+	changed := httptest.NewRecorder()
+	a.ServeHTTP(changed, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/devices/live?since=%d", payload.Revision), nil))
+	if changed.Code != http.StatusOK {
+		t.Fatalf("changed live status=%d body=%s", changed.Code, changed.Body.String())
+	}
+	var updated struct {
+		Devices []LiveDeviceState `json:"devices"`
+	}
+	if err := json.Unmarshal(changed.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Devices) != 1 || updated.Devices[0].Power == nil || *updated.Devices[0].Power {
+		t.Fatalf("external OFF not published: %+v", updated)
+	}
+}
+
+func TestMIoTReadRefsKeepSwitchOutOfEnergyMetrics(t *testing.T) {
+	spec := miotSpecDocument{Services: []struct {
+		IID         int    `json:"iid"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Type        string `json:"type"`
+		Properties  []struct {
+			IID         int      `json:"iid"`
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Type        string   `json:"type"`
+			Format      string   `json:"format"`
+			Unit        string   `json:"unit"`
+			Access      []string `json:"access"`
+			ValueList   []struct {
+				Value       any    `json:"value"`
+				Description string `json:"description"`
+			} `json:"value-list"`
+		} `json:"properties"`
+		Actions []struct {
+			IID         int    `json:"iid"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Type        string `json:"type"`
+			In          []int  `json:"in"`
+			Out         []int  `json:"out"`
+		} `json:"actions"`
+	}{}}
+	service := struct {
+		IID         int    `json:"iid"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Type        string `json:"type"`
+		Properties  []struct {
+			IID         int      `json:"iid"`
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Type        string   `json:"type"`
+			Format      string   `json:"format"`
+			Unit        string   `json:"unit"`
+			Access      []string `json:"access"`
+			ValueList   []struct {
+				Value       any    `json:"value"`
+				Description string `json:"description"`
+			} `json:"value-list"`
+		} `json:"properties"`
+		Actions []struct {
+			IID         int    `json:"iid"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Type        string `json:"type"`
+			In          []int  `json:"in"`
+			Out         []int  `json:"out"`
+		} `json:"actions"`
+	}{IID: 2}
+	property := struct {
+		IID         int      `json:"iid"`
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Type        string   `json:"type"`
+		Format      string   `json:"format"`
+		Unit        string   `json:"unit"`
+		Access      []string `json:"access"`
+		ValueList   []struct {
+			Value       any    `json:"value"`
+			Description string `json:"description"`
+		} `json:"value-list"`
+	}{IID: 1, Name: "relay_state", Type: "urn:miot-spec-v2:property:on:00000006", Format: "bool", Access: []string{"read", "write"}}
+	service.Properties = append(service.Properties, property)
+	spec.Services = append(spec.Services, service)
+	refs := miotReadDeviceRefs(spec)
+	if len(refs) != 1 || refs[0].Field != "on" {
+		t.Fatalf("relay state should be read as a switch, refs=%+v", refs)
+	}
+	if strings.HasPrefix(refs[0].Field, "energy:") {
+		t.Fatalf("switch state must not be classified as energy: %+v", refs[0])
+	}
+}
+
+func TestApplyMIoTDeviceResultUpdatesExternalOffValue(t *testing.T) {
+	device := Device{RemoteID: "did-live-1"}
+	refs := []miotDevicePropertyRef{{SIID: 2, PIID: 1, Field: "on", Label: "开关状态", Format: "bool"}}
+	body := []byte(`{"code":0,"result":[{"did":"did-live-1","siid":2,"piid":1,"code":0,"value":false}]}`)
+	applyMIoTDeviceResult(&device, refs, body)
+	if !device.StateRead {
+		t.Fatal("successful MIoT property response was not marked as fresh")
+	}
+	if device.Power == nil || *device.Power {
+		t.Fatalf("MIoT OFF value was not applied: %+v", device.Power)
+	}
+}
+
+func TestMIoTBatchResultMustMatchDeviceDID(t *testing.T) {
+	refs := []miotDevicePropertyRef{{SIID: 2, PIID: 1, Field: "on", Label: "开关状态", Format: "bool"}}
+	body := []byte(`{"code":0,"result":[{"did":"did-other","siid":2,"piid":1,"code":0,"value":true},{"did":"did-target","siid":2,"piid":1,"code":0,"value":false},{"siid":2,"piid":1,"code":0,"value":true}]}`)
+	target := Device{RemoteID: "did-target"}
+	applyMIoTDeviceResultForDID(&target, refs, body, true)
+	if !target.StateRead || target.Power == nil || *target.Power {
+		t.Fatalf("batch must apply only the target device's explicit OFF result: %+v", target)
+	}
+	other := Device{RemoteID: "did-other"}
+	applyMIoTDeviceResultForDID(&other, refs, body, true)
+	if !other.StateRead || other.Power == nil || !*other.Power {
+		t.Fatalf("batch must keep the other device's explicit ON result separate: %+v", other)
+	}
+	missing := Device{RemoteID: "did-missing"}
+	applyMIoTDeviceResultForDID(&missing, refs, []byte(`{"code":0,"result":[{"siid":2,"piid":1,"code":0,"value":true}]}`), true)
+	if missing.StateRead || missing.Power != nil {
+		t.Fatalf("batch result without DID must not be assigned to an arbitrary device: %+v", missing)
+	}
+}
+
+func TestEwelinkLiveRefreshPrefersFreshStatusOverCachedDeviceList(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/v2/device/thing":
+			_, _ = io.WriteString(w, `{"error":0,"data":{"thingList":[{"itemType":1,"itemData":{"deviceid":"ew-live-1","name":"插座","productModel":"DIY_SWITCH","brandName":"Sonoff","online":true,"devicekey":"dk","params":{"switch":"on"}}}]}}`)
+		case r.URL.Path == "/v2/device/thing/status":
+			_, _ = io.WriteString(w, `{"error":0,"data":{"params":{"switch":"off"}}}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	secret := providerSecret{AppID: "app", AppSecret: "secret", AccessToken: "access"}
+	devices, _, err := ewelinkFetchDevicesWithClientAndKeysOptions(context.Background(), secret, server.Client(), server.URL, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(devices) != 1 {
+		t.Fatalf("expected one device, got %d", len(devices))
+	}
+	if !devices[0].StateRead {
+		t.Fatal("status endpoint response should be marked fresh")
+	}
+	if devices[0].Power == nil || *devices[0].Power {
+		t.Fatalf("fresh OFF should override cached ON, got %+v", devices[0].Power)
+	}
+}
+
+func TestMIoTPowerStateNamesAndValues(t *testing.T) {
+	for _, name := range []string{"on", "relay_state", "switch_state", "power_state", "outlet_state", "is_on"} {
+		if !miotPowerStateName(miotNormalizedName(name)) {
+			t.Errorf("power state name %q was not recognized", name)
+		}
+	}
+	for raw, want := range map[any]bool{true: true, false: false, float64(1): true, float64(0): false, "ON": true, "off": false, "1": true, "0": false} {
+		got, ok := miotBoolValue(raw)
+		if !ok || got != want {
+			t.Errorf("miotBoolValue(%v)=(%v,%v), want (%v,true)", raw, got, ok, want)
+		}
+	}
+}
+
 func TestProviderAccountCanPollAfterTransientSyncError(t *testing.T) {
 	for _, tc := range []struct {
 		status string
@@ -1683,5 +1902,80 @@ func TestRecordEnergySamplePreservesImportedCurrentDayAndCloudWeekTotals(t *test
 	}
 	if energy.WeekKWh == nil || math.Abs(*energy.WeekKWh-week) > 1e-9 {
 		t.Fatalf("current-week cloud total should not be replaced by a partial local sum: %+v", energy)
+	}
+}
+
+func TestPageActivityLeasesSupportMultipleTabs(t *testing.T) {
+	m := &integrationManager{pageLeases: map[string]time.Time{}}
+	if got := m.updatePageActivity("web-tab-00000001", true); got != 1 {
+		t.Fatalf("first active tab count=%d want=1", got)
+	}
+	if got := m.updatePageActivity("web-tab-00000002", true); got != 2 {
+		t.Fatalf("two active tabs count=%d want=2", got)
+	}
+	if got := m.updatePageActivity("web-tab-00000001", false); got != 1 {
+		t.Fatalf("hiding first tab count=%d want=1", got)
+	}
+	if got := m.activePageCount(time.Now()); got != 1 {
+		t.Fatalf("remaining visible tab count=%d want=1", got)
+	}
+	if got := m.updatePageActivity("web-tab-00000002", false); got != 0 {
+		t.Fatalf("all tabs hidden count=%d want=0", got)
+	}
+}
+
+func TestPageActivityLeaseExpires(t *testing.T) {
+	now := time.Now()
+	m := &integrationManager{pageLeases: map[string]time.Time{"web-tab-00000001": now.Add(-time.Second)}}
+	if got := m.activePageCount(now); got != 0 {
+		t.Fatalf("expired page leases count=%d want=0", got)
+	}
+}
+
+func TestProviderPollingRequiresActivePage(t *testing.T) {
+	m := &integrationManager{}
+	if m.startProviderStatePollIfNeeded(context.Background(), time.Now()) {
+		t.Fatal("polling must not start with no visible page")
+	}
+	m.updatePageActivity("web-tab-00000001", true)
+	if !m.startProviderStatePollIfNeeded(context.Background(), time.Now()) {
+		t.Fatal("polling should start immediately after a visible page becomes active")
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		m.activityMu.Lock()
+		running := m.pollRunning
+		m.activityMu.Unlock()
+		if !running {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("test poll did not finish")
+}
+
+func TestStateSyncActivityEndpoint(t *testing.T) {
+	a := testApp(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/state-sync/activity", strings.NewReader(`{"clientId":"web-tab-00000001","active":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	a.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("activity endpoint status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	if got := a.integrations.activePageCount(time.Now()); got != 1 {
+		t.Fatalf("active page count=%d want=1", got)
+	}
+}
+
+func TestStateSyncActivityEndpointRequiresLogin(t *testing.T) {
+	a := testApp(t)
+	a.authDisabled = false
+	req := httptest.NewRequest(http.MethodPost, "/api/state-sync/activity", strings.NewReader(`{"clientId":"web-tab-00000001","active":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	a.ServeHTTP(resp, req)
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated activity endpoint status=%d want=%d", resp.Code, http.StatusUnauthorized)
 	}
 }

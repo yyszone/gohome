@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -120,6 +121,7 @@ type Device struct {
 	Demo          bool              `json:"demo"`
 	ProviderGroup string            `json:"providerGroup,omitempty"`
 	CreatedAt     time.Time         `json:"createdAt"`
+	StateRead     bool              `json:"-"` // true only when the provider returned a fresh live-state response.
 }
 
 type Account struct {
@@ -170,9 +172,10 @@ type diskState struct {
 }
 
 type Store struct {
-	mu   sync.RWMutex
-	path string
-	data diskState
+	mu           sync.RWMutex
+	path         string
+	data         diskState
+	liveRevision uint64 // changes only when device/live state changes.
 }
 
 func newID() string {
@@ -187,7 +190,7 @@ func newStore(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, err
 	}
-	s := &Store{path: filepath.Join(dir, "gohome.json")}
+	s := &Store{path: filepath.Join(dir, "gohome.json"), liveRevision: 1}
 	b, err := os.ReadFile(s.path)
 	if err == nil {
 		if err := json.Unmarshal(b, &s.data); err != nil {
@@ -359,12 +362,20 @@ func (s *Store) putDevice(d Device) error {
 		if s.data.Devices[i].ID == d.ID {
 			s.data.Devices[i] = d
 			s.addLogLocked("info", "设备已更新："+d.Name)
-			return s.saveLocked()
+			if err := s.saveLocked(); err != nil {
+				return err
+			}
+			s.liveRevision++
+			return nil
 		}
 	}
 	s.data.Devices = append(s.data.Devices, d)
 	s.addLogLocked("success", "已添加设备："+d.Name)
-	return s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		return err
+	}
+	s.liveRevision++
+	return nil
 }
 
 // refreshDeviceStates updates only the live snapshot for devices that are
@@ -386,19 +397,23 @@ func (s *Store) refreshDeviceStates(accountID string, incoming []Device) (int, e
 			}
 			before := *current
 			current.Online = remote.Online
-			if remote.Power != nil {
+			// When an online device was queried but the provider did not return a
+			// usable switch value, clear the old value instead of presenting it as
+			// current. Offline devices keep their last-known value for context.
+			if remote.Online {
 				current.Power = cloneBool(remote.Power)
-			}
-			if len(remote.Channels) > 0 {
-				current.Channels = mergeDeviceChannels(current.Channels, remote.Channels)
+				current.Channels = cloneDeviceChannels(remote.Channels)
+				if remote.StateRead {
+					current.Attributes = append([]DeviceAttribute{}, remote.Attributes...)
+					current.Value = remote.Value
+				}
+			} else if remote.StateRead {
+				current.Power = cloneBool(remote.Power)
+				current.Channels = cloneDeviceChannels(remote.Channels)
 			}
 			if len(remote.Controls) > 0 {
 				current.Controls = mergeDeviceControls(current.Controls, remote.Controls)
 				current.CanControl = remote.CanControl
-			}
-			if len(remote.Attributes) > 0 {
-				current.Attributes = append([]DeviceAttribute(nil), remote.Attributes...)
-				current.Value = remote.Value
 			}
 			if remote.Energy != nil {
 				energy := *remote.Energy
@@ -417,7 +432,20 @@ func (s *Store) refreshDeviceStates(accountID string, incoming []Device) (int, e
 	if changed == 0 {
 		return 0, nil
 	}
-	return changed, s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		return changed, err
+	}
+	s.liveRevision++
+	return changed, nil
+}
+
+func cloneDeviceChannels(channels []DeviceChannel) []DeviceChannel {
+	out := make([]DeviceChannel, 0, len(channels))
+	for _, channel := range channels {
+		channel.Power = cloneBool(channel.Power)
+		out = append(out, channel)
+	}
+	return out
 }
 
 func cloneBool(value *bool) *bool {
@@ -481,7 +509,11 @@ func (s *Store) deleteDevice(id string) error {
 			}
 			s.data.Devices = append(s.data.Devices[:i], s.data.Devices[i+1:]...)
 			s.addLogLocked("info", "已删除设备："+d.Name+"（普通同步不会恢复；重新登录账号后可重新同步）")
-			return s.saveLocked()
+			if err := s.saveLocked(); err != nil {
+				return err
+			}
+			s.liveRevision++
+			return nil
 		}
 	}
 	return os.ErrNotExist
@@ -557,6 +589,59 @@ func (s *Store) setDiscovery(items []Discovery) error {
 	return s.saveLocked()
 }
 
+type LiveControlValue struct {
+	ID    string `json:"id"`
+	Value any    `json:"value"`
+}
+
+type LiveDeviceState struct {
+	ID            string             `json:"id"`
+	Online        bool               `json:"online"`
+	Power         *bool              `json:"power"`
+	Channels      []DeviceChannel    `json:"channels"`
+	Energy        *EnergyMetrics     `json:"energy"`
+	Attributes    []DeviceAttribute  `json:"attributes"`
+	ControlValues []LiveControlValue `json:"controlValues"`
+	Value         string             `json:"value"`
+	LastSeen      time.Time          `json:"lastSeen"`
+}
+
+// liveSnapshot returns only fields that can change while a page is open.
+// It avoids transferring account, control-schema and discovery data every tick.
+func (s *Store) liveSnapshot() (uint64, []LiveDeviceState) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]LiveDeviceState, 0, len(s.data.Devices))
+	for _, device := range s.data.Devices {
+		controlValues := make([]LiveControlValue, 0, len(device.Controls))
+		for _, control := range device.Controls {
+			if control.Kind == "property" {
+				controlValues = append(controlValues, LiveControlValue{ID: control.ID, Value: control.Value})
+			}
+		}
+		live := LiveDeviceState{
+			ID: device.ID, Online: device.Online, Power: cloneBool(device.Power),
+			Channels: cloneDeviceChannels(device.Channels), Attributes: append([]DeviceAttribute{}, device.Attributes...),
+			ControlValues: controlValues, Value: device.Value, LastSeen: device.LastSeen,
+		}
+		if device.Energy != nil {
+			energy := *device.Energy
+			energy.PowerW = cloneFloat(energy.PowerW)
+			energy.VoltageV = cloneFloat(energy.VoltageV)
+			energy.CurrentA = cloneFloat(energy.CurrentA)
+			energy.TodayKWh = cloneFloat(energy.TodayKWh)
+			energy.WeekKWh = cloneFloat(energy.WeekKWh)
+			energy.MonthKWh = cloneFloat(energy.MonthKWh)
+			energy.YearKWh = cloneFloat(energy.YearKWh)
+			energy.TotalKWh = cloneFloat(energy.TotalKWh)
+			energy.HistoryKWh = cloneFloat(energy.HistoryKWh)
+			live.Energy = &energy
+		}
+		out = append(out, live)
+	}
+	return s.liveRevision, out
+}
+
 type App struct {
 	store         *Store
 	mux           *http.ServeMux
@@ -590,6 +675,7 @@ func (a *App) routes() {
 	a.mux.HandleFunc("POST /api/auth/login", a.authLogin)
 	a.mux.HandleFunc("GET /api/auth/session", a.authSession)
 	a.mux.HandleFunc("POST /api/auth/logout", a.authLogout)
+	a.mux.HandleFunc("POST /api/state-sync/activity", a.updateStateSyncActivity)
 	a.mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{
 			"ok": true, "app": "GoHome", "version": version,
@@ -599,6 +685,7 @@ func (a *App) routes() {
 	})
 	a.mux.HandleFunc("GET /api/overview", a.overview)
 	a.mux.HandleFunc("GET /api/devices", a.listDevices)
+	a.mux.HandleFunc("GET /api/devices/live", a.listLiveDevices)
 	a.mux.HandleFunc("GET /api/v1/devices", a.listDevices)
 	a.mux.HandleFunc("GET /api/v1/devices/{id}", a.getDevice)
 	a.mux.HandleFunc("GET /api/v1/openapi.json", a.apiDocs)
@@ -637,6 +724,11 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "same-origin")
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+	}
 	a.mux.ServeHTTP(w, r)
 }
 
@@ -690,7 +782,9 @@ func (a *App) apiDocs(w http.ResponseWriter, r *http.Request) {
 			{"method": "POST", "path": "/api/auth/login", "body": map[string]any{"username": "admin", "password": "123456"}, "description": "Create a persistent HttpOnly session cookie"},
 			{"method": "GET", "path": "/api/auth/session", "description": "Check whether the browser has a valid session cookie"},
 			{"method": "POST", "path": "/api/auth/logout", "description": "Clear the session cookie"},
+			{"method": "POST", "path": "/api/state-sync/activity", "body": map[string]any{"clientId": "per-tab-id", "active": true}, "description": "Lease visible overview/device page activity to enable provider polling; release when hidden"},
 			{"method": "GET", "path": "/api/v1/devices", "description": "List synchronized devices and discovered controls"},
+			{"method": "GET", "path": "/api/devices/live?since=REVISION", "description": "Lightweight live-state delta for visible browser pages; returns 204 when unchanged"},
 			{"method": "GET", "path": "/api/v1/devices/{id}", "description": "Get one device, including writable MIoT properties and callable actions"},
 			{"method": "POST", "path": "/api/v1/devices/{id}/command", "body": map[string]any{"command": "turn_on | turn_off | toggle", "channel": "optional outlet number for multi-relay devices"}, "description": "Control a supported switch"},
 			{"method": "POST", "path": "/api/v1/devices/{id}/property", "body": map[string]any{"siid": 2, "piid": 1, "value": true}, "description": "Set a writable MIoT property discovered from the model specification"},
@@ -727,6 +821,16 @@ func (a *App) listDevices(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(d, func(i, j int) bool { return d[i].CreatedAt.Before(d[j].CreatedAt) })
 	writeJSON(w, 200, d)
 }
+func (a *App) listLiveDevices(w http.ResponseWriter, r *http.Request) {
+	revision, devices := a.store.liveSnapshot()
+	since, _ := strconv.ParseUint(r.URL.Query().Get("since"), 10, 64)
+	if r.URL.Query().Has("since") && since == revision {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"revision": revision, "devices": devices})
+}
+
 func (a *App) getDevice(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	for _, d := range a.store.snapshot().Devices {

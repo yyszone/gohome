@@ -8,29 +8,9 @@ import (
 	"time"
 )
 
-// Provider state is refreshed separately from the browser's local API polling.
-// The web page only reads GoHome's database; this worker asks each brand for a
-// fresh cloud snapshot and writes live values back to the store.
-const providerStatePollInterval = 30 * time.Second
-
-func (m *integrationManager) runProviderStatePoller(ctx context.Context) {
-	if m == nil {
-		return
-	}
-	// A first pass on startup prevents a restart from displaying stale switch
-	// states for a full polling interval.
-	m.refreshAllProviderStates(ctx)
-	ticker := time.NewTicker(providerStatePollInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			m.refreshAllProviderStates(ctx)
-		}
-	}
-}
+// Provider state refresh mechanics are page-lease driven in page_activity.go.
+// The routines below only execute a refresh after a visible authenticated page
+// has requested one.
 
 func (m *integrationManager) refreshAllProviderStates(ctx context.Context) {
 	if m == nil || m.store == nil || m.vault == nil {
@@ -41,7 +21,7 @@ func (m *integrationManager) refreshAllProviderStates(ctx context.Context) {
 
 	snapshot := m.store.snapshot()
 	for _, account := range snapshot.Accounts {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || m.activePageCount(time.Now()) == 0 {
 			return
 		}
 		if !providerAccountCanPoll(account.Status) {

@@ -1,0 +1,410 @@
+{
+  "devices": [
+    {
+      "id": "ewelink-1000a68f48",
+      "accountId": "018daea1d52978a8",
+      "remoteId": "1000a68f48",
+      "name": "河南吸顶灯",
+      "brand": "嵩诺",
+      "model": "BASIC-CN",
+      "room": "5e9533465aa15b00072a6dee",
+      "category": "灯光",
+      "protocol": "ewelink-cloud",
+      "online": true,
+      "power": false,
+      "canControl": true,
+      "lastSeen": "2026-11-25T07:43:13.524935725+08:00",
+      "demo": false,
+      "createdAt": "2026-11-24T22:24:40.275280153+08:00"
+    },
+    {
+      "id": "ewelink-10022d8ca6",
+      "accountId": "018daea1d52978a8",
+      "remoteId": "10022d8ca6",
+      "name": "电量插座",
+      "brand": "coolkit",
+      "model": "CK-BL602-SWP1-01(182)",
+      "room": "未分区",
+      "category": "插座",
+      "protocol": "ewelink-cloud",
+      "online": false,
+      "power": true,
+      "channels": [
+        {
+          "outlet": 0,
+          "name": "通道 1",
+          "power": true,
+          "canControl": true
+        },
+        {
+          "outlet": 1,
+          "name": "通道 2",
+          "power": false,
+          "canControl": true
+        },
+        {
+          "outlet": 2,
+          "name": "通道 3",
+          "power": false,
+          "canControl": true
+        },
+        {
+          "outlet": 3,
+          "name": "通道 4",
+          "power": false,
+          "canControl": true
+        }
+      ],
+      "canControl": true,
+      "energy": {
+        "supported": true,
+        "powerW": 62.98,
+        "voltageV": 230.15,
+        "currentA": 0.35,
+        "source": "eWeLink",
+        "todaySource": "云端未返回日累计；等待有效功率或月累计采样",
+        "weekSource": "云端周统计仅部分型号提供；等待本机每日累计",
+        "updatedAt": "2026-11-25T07:44:02.855365018+08:00"
+      },
+      "lastSeen": "2026-11-24T22:24:40.280599446+08:00",
+      "demo": false,
+      "createdAt": "2026-11-24T22:24:40.277178402+08:00"
+    },
+    {
+      "id": "ewelink-10022181a0",
+      "accountId": "018daea1d52978a8",
+      "remoteId": "10022181a0",
+      "name": "主力电脑",
+      "brand": "coolkit",
+      "model": "CK-BL602-4SW-WH(138)",
+      "room": "未分区",
+      "category": "其他",
+      "protocol": "ewelink-cloud",
+      "online": false,
+      "power": false,
+      "channels": [
+        {
+          "outlet": 0,
+          "name": "通道 1",
+          "power": false,
+          "canControl": true
+        },
+        {
+          "outlet": 1,
+          "name": "通道 2",
+          "power": false,
+          "canControl": true
+        },
+        {
+          "outlet": 2,
+          "name": "通道 3",
+          "power": false,
+          "canControl": true
+        },
+        {
+          "outlet": 3,
+          "name": "通道 4",
+          "power": false,
+          "canControl": true
+        }
+      ],
+      "canControl": true,
+      "lastSeen": "2026-11-24T22:24:40.280600302+08:00",
+      "demo": false,
+      "createdAt": "2026-11-24T22:24:40.278053322+08:00"
+    },
+    {
+      "id": "ewelink-10015fb4ad",
+      "accountId": "018daea1d52978a8",
+      "remoteId": "10015fb4ad",
+      "name": "nas",
+      "brand": "嵩诺",
+      "model": "CKD-007",
+      "room": "未分区",
+      "category": "其他",
+      "protocol": "ewelink-cloud",
+      "online": false,
+      "power": true,
+      "canControl": true,
+      "lastSeen": "2026-11-24T22:24:40.280601063+08:00",
+      "demo": false,
+      "createdAt": "2026-11-24T22:24:40.278823164+08:00"
+    },
+    {
+      "id": "ewelink-1000ceb267",
+      "accountId": "018daea1d52978a8",
+      "remoteId": "1000ceb267",
+      "name": "我的设备带遥控器的",
+      "brand": "嵩诺",
+      "model": "SA-018",
+      "room": "未分区",
+      "category": "其他",
+      "protocol": "ewelink-cloud",
+      "online": false,
+      "power": true,
+      "canControl": true,
+      "lastSeen": "2026-11-24T22:24:40.280601251+08:00",
+      "demo": false,
+      "createdAt": "2026-11-24T22:24:40.279512211+08:00"
+    },
+    {
+      "id": "ewelink-100087ec97",
+      "accountId": "018daea1d52978a8",
+      "remoteId": "100087ec97",
+      "name": "我的台式机nas",
+      "brand": "明日电子",
+      "model": "MR-KJ103",
+      "room": "未分区",
+      "category": "其他",
+      "protocol": "ewelink-cloud",
+      "online": false,
+      "power": true,
+      "canControl": true,
+      "lastSeen": "2026-11-24T22:24:40.28060287+08:00",
+      "demo": false,
+      "createdAt": "2026-11-24T22:24:40.280064472+08:00"
+    },
+    {
+      "id": "ewelink-1000993d97",
+      "accountId": "018daea1d52978a8",
+      "remoteId": "1000993d97",
+      "name": "电脑",
+      "brand": "明日电子",
+      "model": "MR-KJ103",
+      "room": "未分区",
+      "category": "其他",
+      "protocol": "ewelink-cloud",
+      "online": false,
+      "power": false,
+      "canControl": true,
+      "lastSeen": "2026-11-24T22:24:40.280603041+08:00",
+      "demo": false,
+      "createdAt": "2026-11-24T22:24:40.280334524+08:00"
+    },
+    {
+      "id": "xiaomi-234301087",
+      "accountId": "a04e929e7567fb21",
+      "remoteId": "234301087",
+      "name": "小冰箱",
+      "brand": "小米",
+      "model": "chuangmi.plug.m3",
+      "room": "未分区",
+      "category": "插座",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "power": true,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:3:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 3,
+          "piid": 1,
+          "format": "bool",
+          "value": true
+        }
+      ],
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-25T07:44:02.937768962+08:00"
+      },
+      "attributes": [
+        {
+          "key": "on",
+          "label": "开关状态",
+          "value": "关闭"
+        },
+        {
+          "key": "temperature",
+          "label": "温度",
+          "value": "28",
+          "unit": "°C"
+        },
+        {
+          "key": "on",
+          "label": "开关状态",
+          "value": "开启"
+        }
+      ],
+      "value": "开关状态 关闭 · 温度 28°C",
+      "lastSeen": "2026-11-25T07:43:32.099123376+08:00",
+      "demo": false,
+      "createdAt": "2026-11-24T22:27:08.251641356+08:00"
+    }
+  ],
+  "accounts": [
+    {
+      "id": "018daea1d52978a8",
+      "provider": "ewelink",
+      "label": "易微联",
+      "region": "cn",
+      "status": "connected",
+      "note": "已登录 · 已同步 7 台设备",
+      "createdAt": "2026-11-24T22:24:40.199105979+08:00"
+    },
+    {
+      "id": "a04e929e7567fb21",
+      "provider": "xiaomi",
+      "label": "17703965346",
+      "region": "cn",
+      "status": "connected",
+      "note": "已授权 · 已同步 1 台设备",
+      "createdAt": "2026-11-24T22:27:08.11871396+08:00"
+    }
+  ],
+  "discovery": [],
+  "logs": [
+    {
+      "id": "9411dee75de984c6",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:43:32.099127931+08:00"
+    },
+    {
+      "id": "5e6421ca70ee8162",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:43:30.939130738+08:00"
+    },
+    {
+      "id": "b9dc7d9c1c3cd67a",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T07:43:13.524940611+08:00"
+    },
+    {
+      "id": "9ba20d1d619240ab",
+      "level": "error",
+      "message": "[小米] 发送安全验证码失败：小米短信发送接口拒绝本次请求（70022）：发送验证码失败",
+      "at": "2026-11-25T07:28:26.861463773+08:00"
+    },
+    {
+      "id": "5f39deaa30139cd5",
+      "level": "warn",
+      "message": "[小米] 账号登录/设备同步：小米已经成功识别验证渠道（短信），但验证码发送阶段被小米拒绝（70022）。如果其他手机号可以收到验证码，说明短信服务并非完全不可用；当前绑定安全手机号的 24 小时发送额度、号码风控、运营商路由或短信退订拦截更值得排查。小米官方说明同一手机号 24 小时内短信验证码通常最多 5 次（中国大陆）或 3 次（其他国家/地区）；达到上限后需等待 24 小时。请勿连续重发；如当前账号同时提供邮箱验证，可在本次会话中切换邮箱。70022 本身没有公开的唯一错误码释义，不能仅凭它断定一定是超频。",
+      "at": "2026-11-25T07:28:19.706311267+08:00"
+    },
+    {
+      "id": "6c82071a8a1dbe15",
+      "level": "warn",
+      "message": "[易微联 / eWeLink] 后台状态同步失败：eWeLink 云端状态读取失败：请求 eWeLink 设备清单失败: Get \"https://cn-apia.coolkit.cn/v2/device/thing?lang=cn\u0026num=0\": context canceled",
+      "at": "2026-11-25T07:28:04.670113192+08:00"
+    },
+    {
+      "id": "390dc84fed31cda6",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T07:24:02.538690435+08:00"
+    },
+    {
+      "id": "32fe21e4a4fbd9dd",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:23:04.730124196+08:00"
+    },
+    {
+      "id": "70efe46667fe9958",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:23:02.68964586+08:00"
+    },
+    {
+      "id": "89463491b86a4e6d",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T06:58:03.114258274+08:00"
+    },
+    {
+      "id": "3228f2a5e9f96d8a",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T06:58:01.011757732+08:00"
+    },
+    {
+      "id": "d07bd853966c4cbb",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T06:57:58.881701069+08:00"
+    },
+    {
+      "id": "d82b170d287f456c",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-24T22:29:20.577210989+08:00"
+    },
+    {
+      "id": "9fc247b49fec7939",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-24T22:29:19.126209348+08:00"
+    },
+    {
+      "id": "25a07385cee70667",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-24T22:29:16.441424709+08:00"
+    },
+    {
+      "id": "aab2ed5e9fb861fc",
+      "level": "success",
+      "message": "品牌账号同步完成：1 台设备",
+      "at": "2026-11-24T22:27:09.911940108+08:00"
+    },
+    {
+      "id": "0c76cd1c30166437",
+      "level": "success",
+      "message": "品牌账号已添加：17703965346",
+      "at": "2026-11-24T22:27:08.118935117+08:00"
+    },
+    {
+      "id": "7309cc21ec6dde5f",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-24T22:26:34.581982322+08:00"
+    },
+    {
+      "id": "dab9cae989918c1b",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-24T22:26:32.851836021+08:00"
+    },
+    {
+      "id": "363a6330b4eec318",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-24T22:26:25.944422098+08:00"
+    },
+    {
+      "id": "c41c26b9c9913d44",
+      "level": "success",
+      "message": "品牌账号同步完成：7 台设备",
+      "at": "2026-11-24T22:24:40.280621085+08:00"
+    },
+    {
+      "id": "c0146b85a715ff49",
+      "level": "success",
+      "message": "品牌账号已添加：易微联",
+      "at": "2026-11-24T22:24:40.199115331+08:00"
+    },
+    {
+      "id": "737f2fe5443a4b99",
+      "level": "info",
+      "message": "GoHome 初始化完成，等待真实品牌设备接入",
+      "at": "2026-11-24T22:24:02.298768228+08:00"
+    }
+  ],
+  "firstRunAt": "2026-11-24T22:24:02.298724426+08:00"
+}
