@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#101827" />
+  <meta name="description" content="GoHome 轻量级家庭设备管理中心" />
+  <title>GoHome · 智能家庭</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand-lockup">
+      <div class="brand-mark"><span></span><span></span><span></span></div>
+      <div><div class="brand-name">GoHome</div><div class="brand-caption">SMART HOME CENTER</div></div>
+    </div>
+    <div class="side-label">工作区</div>
+    <nav class="nav-list" aria-label="主导航">
+      <button class="nav-item active" data-page="overview"><i>◫</i><span>总览</span><b>01</b></button>
+      <button class="nav-item" data-page="devices"><i>⌘</i><span>设备管理</span><b id="nav-device-count">00</b></button>
+      <button class="nav-item" data-page="integrations"><i>⎋</i><span>品牌接入</span><b>02</b></button>
+      <button class="nav-item" data-page="discovery"><i>⌁</i><span>局域网发现</span></button>
+      <button class="nav-item" data-page="logs"><i>≋</i><span>运行日志</span></button>
+    </nav>
+    <div class="sidebar-spacer"></div>
+    <div class="side-status"><span class="pulse"></span><div><strong>核心服务运行中</strong><small>Go engine · Local mode</small></div></div>
+    <div class="sidebar-foot"><span class="tiny-dot"></span> GoHome v0.2.8 <span class="foot-right">轻量 · 本地优先</span></div>
+  </aside>
+
+  <main class="main-area">
+    <header class="topbar">
+      <button class="mobile-menu" id="mobile-menu" aria-label="打开菜单">☰</button>
+      <div class="breadcrumb"><span>我的家庭</span><i>/</i><strong id="crumb-title">总览</strong></div>
+      <div class="top-actions">
+        <span class="local-chip"><span></span> 本地服务</span>
+        <button class="icon-btn" id="refresh-btn" title="刷新数据">↻</button>
+        <div class="avatar">Y</div>
+      </div>
+    </header>
+
+    <section class="page active" id="page-overview">
+      <div class="welcome-row">
+        <div><div class="eyebrow">TUESDAY · HOME DASHBOARD</div><h1>家，尽在掌握<span class="title-period">.</span></h1><p class="subhead">设备状态一目了然，让日常自动化变得简单。</p></div>
+        <div class="welcome-actions"><button class="btn btn-ghost" data-goto="discovery">⌁ 扫描设备</button><button class="btn btn-primary" data-action="add-device">＋ 添加设备</button></div>
+      </div>
+      <div class="stat-grid">
+        <article class="stat-card"><div class="stat-top"><span>设备总数</span><span class="stat-icon violet">⌘</span></div><div class="stat-number" id="stat-total">—</div><div class="stat-bottom"><span class="stat-note">已纳入家庭管理</span><span class="stat-arrow">↗</span></div></article>
+        <article class="stat-card"><div class="stat-top"><span>在线设备</span><span class="stat-icon green">◉</span></div><div class="stat-number" id="stat-online">—</div><div class="stat-bottom"><span class="status-text"><i class="green-dot"></i> 当前在线</span><span class="stat-note" id="online-rate">—</span></div></article>
+        <article class="stat-card"><div class="stat-top"><span>开启设备</span><span class="stat-icon amber">ϟ</span></div><div class="stat-number" id="stat-on">—</div><div class="stat-bottom"><span class="stat-note">开关 / 灯光 / 插座</span><span class="stat-arrow">↗</span></div></article>
+        <article class="stat-card"><div class="stat-top"><span>品牌接入</span><span class="stat-icon blue">⎋</span></div><div class="stat-number" id="stat-accounts">0</div><div class="stat-bottom"><span class="stat-note">账号接入配置</span><span class="stat-note">小米 · eWeLink</span></div></article>
+      </div>
+
+      <div class="content-grid">
+        <section class="panel devices-panel">
+          <div class="panel-heading"><div><div class="eyebrow">YOUR SMART DEVICES</div><h2>常用设备</h2></div><button class="text-link" data-goto="devices">查看全部 <span>→</span></button></div>
+          <div class="device-grid" id="overview-devices"><div class="loading-state">正在加载设备…</div></div>
+        </section>
+        <aside class="right-column">
+          <section class="panel quick-panel"><div class="panel-heading compact"><div><div class="eyebrow">QUICK ACCESS</div><h2>快捷入口</h2></div><span class="more-dots">···</span></div>
+            <button class="quick-link" data-goto="integrations"><span class="quick-icon xiaomi">米</span><span><strong>连接小米米家</strong><small>MIoT · 账号授权接入</small></span><b>→</b></button>
+            <button class="quick-link" data-goto="integrations"><span class="quick-icon sonoff">S</span><span><strong>连接 Sonoff</strong><small>eWeLink · 云端 / 局域网</small></span><b>→</b></button>
+            <button class="quick-link" data-goto="discovery"><span class="quick-icon network">⌁</span><span><strong>发现局域网设备</strong><small>扫描 mDNS 服务广播</small></span><b>→</b></button>
+          </section>
+          <section class="tip-card"><div class="tip-orb">✦</div><div class="tip-tag">轻量运行</div><h3>把复杂留给协议，<br>把简单留给生活。</h3><p>GoHome 使用单个 Go 进程运行，页面静态内嵌，无需 Node.js。</p><div class="tip-footer"><span>LOCAL FIRST</span><span>GO POWERED ↗</span></div></section>
+        </aside>
+      </div>
+      <section class="panel activity-panel"><div class="panel-heading"><div><div class="eyebrow">RECENT ACTIVITY</div><h2>最近动态</h2></div><button class="text-link" data-goto="logs">全部日志 →</button></div><div class="activity-list" id="overview-logs"><div class="loading-state">正在加载动态…</div></div></section>
+    </section>
+
+    <section class="page" id="page-devices">
+      <div class="page-heading"><div><div class="eyebrow">DEVICE MANAGEMENT</div><h1>设备管理</h1><p class="subhead">统一查看设备、房间与连接状态。</p></div><button class="btn btn-primary" data-action="add-device">＋ 添加设备</button></div>
+      <div class="toolbar"><div class="search-box"><span>⌕</span><input id="device-search" placeholder="搜索设备名称、品牌或房间…" /></div><select id="brand-filter"><option value="">所有品牌</option></select><select id="category-filter"><option value="">所有类型</option></select><span class="result-count" id="device-count-label">0 台设备</span></div>
+      <div class="device-grid full-grid" id="all-devices"><div class="loading-state">正在加载设备…</div></div>
+    </section>
+
+    <section class="page" id="page-integrations">
+      <div class="page-heading"><div><div class="eyebrow">INTEGRATION CENTER</div><h1>品牌接入</h1><p class="subhead">按品牌扩展设备能力，核心设备模型保持统一。消费账号登录；自动同步设备并按可用协议连接。</p></div></div>
+      <div class="integration-banner"><div class="banner-symbol">◎</div><div><strong>登录真实品牌账号，自动同步云端设备</strong><p>小米支持图形验证码及短信 / 邮箱二次验证；Sonoff 使用普通 eWeLink 消费账号登录。凭证加密保存在本机，设备按平台权限与型号能力同步。</p></div></div>
+      <div class="integration-grid">
+        <article class="integration-card"><div class="integration-head"><div class="provider-logo xiaomi-logo">米</div><span class="pill pill-ok">账号登录</span></div><h2>Xiaomi / 米家</h2><p>账号密码登录，支持图形验证码及短信 / 邮箱二次验证会话；通过后同步米家云端设备清单。仅对 MIoT 规格明确开放写权限的开关属性提供设备控制；只读设备保留状态展示。</p><div class="integration-meta"><span>账号密码</span><span>图形验证码</span><span>短信 / 邮箱验证</span><span>云端设备同步</span></div><div class="integration-actions"><a href="https://github.com/al-one/hass-xiaomi-miot" target="_blank" rel="noreferrer">协议参考 ↗</a><button class="btn btn-small btn-outline" data-action="add-xiaomi">登录小米</button></div></article>
+        <article class="integration-card"><div class="integration-head"><div class="provider-logo sonoff-logo">S</div><span class="pill pill-ok">消费账号登录</span></div><h2>eWeLink / Sonoff</h2><p>直接使用 eWeLink 普通邮箱或手机号和密码登录，不需要个人开发者 AppID / AppSecret。按 SonoffLAN 兼容认证方式登录并同步设备清单、可用设备密钥。已识别标准单路 / 多路开关的设备可通过 eWeLink 云端 API 控制；实时 WebSocket 状态推送和局域网加密控制仍在后续完善。</p><div class="integration-meta"><span>消费账号密码</span><span>区域自动选择</span><span>云端设备同步</span><span>开关云端控制</span><span>多路继电器</span></div><div class="integration-actions"><a href="https://github.com/AlexxIT/SonoffLAN" target="_blank" rel="noreferrer">SonoffLAN 参考 ↗</a><button class="btn btn-small btn-outline" data-action="add-ewelink">登录 eWeLink</button></div></article>
+        <article class="integration-card muted-card"><div class="integration-head"><div class="provider-logo mqtt-logo">⌁</div><span class="pill pill-neutral">规划中</span></div><h2>MQTT / ESP32</h2><p>为自制 ESP32 继电器、传感器预留统一接入方向。后续可加入 MQTT 客户端、主题映射和设备自动注册。</p><div class="integration-meta"><span>MQTT</span><span>ESP32</span><span>自定义设备</span></div><div class="integration-actions"><a href="https://mqtt.org/" target="_blank" rel="noreferrer">MQTT 介绍 ↗</a><span class="coming-label">后续扩展</span></div></article>
+      </div>
+      <section class="panel account-panel"><div class="panel-heading"><div><div class="eyebrow">SAVED CONNECTIONS</div><h2>已连接的品牌账号</h2></div></div><div id="account-list" class="account-list"><div class="empty-state">尚未连接品牌账号。点击上方按钮开始登录。</div></div></section>
+    </section>
+
+    <section class="page" id="page-discovery">
+      <div class="page-heading"><div><div class="eyebrow">LOCAL NETWORK</div><h1>局域网发现</h1><p class="subhead">通过 mDNS 监听常见智能家居服务广播。</p></div><button class="btn btn-primary" id="scan-btn">⌁ 开始扫描</button></div>
+      <div class="scan-intro"><div class="scan-graphic"><div class="scan-ring ring-one"></div><div class="scan-ring ring-two"></div><div class="scan-center">⌁</div></div><div><h2>寻找网络中的智能设备</h2><p>扫描常见服务：HomeKit、HTTP、MQTT、Matter、MIoT 等。扫描结果仅代表发现了网络服务，不等于已经识别设备型号或具备控制权限。</p><div class="scan-chips"><span>224.0.0.251:5353</span><span>mDNS / DNS-SD</span><span>只读发现</span></div></div></div>
+      <section class="panel discovery-panel"><div class="panel-heading"><div><div class="eyebrow">DISCOVERED SERVICES</div><h2>发现结果</h2></div><span class="result-count" id="discovery-count">0 项服务</span></div><div id="discovery-list" class="discovery-list"><div class="empty-state">点击「开始扫描」搜索局域网广播服务。</div></div></section>
+      <div class="notice-box"><strong>为什么可能扫描不到设备？</strong><p>设备可能未广播 mDNS、处于访客网络或不同 VLAN，或者路由器屏蔽了组播。扫描不到不能证明设备离线。小米和 Sonoff 的完整账号设备清单仍应通过各自云端授权接口获取。</p></div>
+    </section>
+
+    <section class="page" id="page-logs">
+      <div class="page-heading"><div><div class="eyebrow">SYSTEM EVENTS</div><h1>运行日志</h1><p class="subhead">记录设备操作、品牌登录错误和设备同步失败；每条日志均可复制。</p></div><div class="welcome-actions"><button class="btn btn-ghost" id="logs-copy">复制全部日志</button><button class="btn btn-ghost" id="logs-refresh">↻ 刷新日志</button></div></div>
+      <section class="panel logs-panel"><div class="log-table-head"><span>级别</span><span>事件</span><span>时间</span><span>操作</span></div><div id="log-list" class="log-list"><div class="loading-state">正在加载日志…</div></div></section>
+    </section>
+
+    <footer class="app-footer"><span>© 2026 GoHome</span><span>DESIGNED FOR YOUR HOME <i>✦</i></span><span>运行于本地网络</span></footer>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="modal-backdrop" aria-hidden="true"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><div><div class="eyebrow">GOHOME CONFIGURATION</div><h2 id="modal-title">添加设备</h2></div><button class="modal-close" id="modal-close">×</button></div><form id="device-form"><label>设备名称<input name="name" required maxlength="80" placeholder="例如：客厅落地灯" /></label><div class="form-row"><label>品牌<select name="brand"><option>小米</option><option>Sonoff</option><option>Yeelight</option><option>其他</option></select></label><label>设备类型<select name="category"><option>插座</option><option>开关</option><option>灯光</option><option>摄像头</option><option>音箱</option><option>温湿度计</option><option>传感器</option><option>空调</option><option>扫地机器人</option><option>风扇</option><option>影音设备</option><option>洗碗机</option><option>其他</option></select></label></div><div class="form-row"><label>所在房间<input name="room" placeholder="例如：客厅" /></label><label>型号（可选）<input name="model" placeholder="设备型号" /></label></div><div class="form-note">手动添加只会建立设备档案，不会自动获得设备控制能力。只有完成品牌登录并同步、且已识别控制属性的设备才会开放对应操作。</div><div class="modal-actions"><button type="button" class="btn btn-ghost" id="modal-cancel">取消</button><button type="submit" class="btn btn-primary">保存设备</button></div></form></section></div>
+
+<div class="modal-backdrop" id="account-backdrop" aria-hidden="true"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="account-modal-title"><div class="modal-head"><div><div class="eyebrow">SECURE BRAND LOGIN</div><h2 id="account-modal-title">连接品牌账号</h2></div><button class="modal-close" id="account-close">×</button></div><form id="account-form"><input type="hidden" name="provider" id="account-provider" />
+  <label>连接名称<input name="label" maxlength="60" placeholder="例如：家里的米家账号（可选）" /></label>
+  <div id="xiaomi-fields" class="provider-fields" hidden>
+    <div class="form-note">使用小米账号登录。图形验证码及短信 / 邮箱二次验证在同一会话中完成。密码仅用于本次认证，不写入磁盘；服务凭证加密保存。</div>
+    <label>小米 ID / 邮箱 / 手机号<input name="username" autocomplete="username" placeholder="小米账号" /></label>
+    <label>小米密码<input name="password" type="password" autocomplete="current-password" placeholder="小米账号密码" /></label>
+    <label>小米服务器<select name="region"><option value="cn">中国大陆</option><option value="us">美国</option><option value="sg">新加坡</option><option value="de">欧洲（德国节点）</option><option value="ru">俄罗斯</option></select></label>
+    <div id="xiaomi-captcha" class="captcha-panel" hidden><strong>小米图形验证码</strong><p>请输入下方图片中的字符。</p><img id="xiaomi-captcha-image" alt="小米登录验证码" /><input id="xiaomi-captcha-code" autocomplete="off" placeholder="输入图形验证码" /></div>
+    <div id="xiaomi-verify-panel" class="captcha-panel" hidden><strong>小米短信 / 邮箱验证</strong><p id="xiaomi-verify-hint">验证码已发送，请查收。</p><input id="xiaomi-verify-code" autocomplete="one-time-code" inputmode="numeric" placeholder="输入短信或邮箱验证码" hidden /><button type="button" class="btn btn-small btn-outline" id="xiaomi-resend">重新发送验证码</button></div>
+  </div>
+  <div id="ewelink-fields" class="provider-fields" hidden>
+    <div class="form-note">直接使用 eWeLink App 消费账号登录，不需要创建开发者应用。此方式参考 SonoffLAN 社区集成的兼容认证协议；平台可能调整接口，账号凭证不会写入磁盘，登录令牌会加密保存。</div>
+    <label>eWeLink 邮箱或手机号<input name="ewelinkUsername" autocomplete="username" placeholder="邮箱或手机号（手机号可填写 +86 开头）" /></label>
+    <div class="form-row"><label>国家区号<select name="countryCode"><option value="+86">+86 中国</option><option value="+1">+1 美国</option><option value="+44">+44 英国</option><option value="+65">+65 新加坡</option><option value="+49">+49 德国</option><option value="+81">+81 日本</option><option value="+82">+82 韩国</option><option value="+852">+852 香港</option><option value="+886">+886 台湾</option><option value="+61">+61 澳大利亚</option><option value="+91">+91 印度</option></select></label><label>服务器区域<select name="region"><option value="auto">自动识别（推荐）</option><option value="cn">中国大陆</option><option value="as">亚洲</option><option value="us">美洲</option><option value="eu">欧洲</option></select></label></div>
+    <label>eWeLink 密码<input name="ewelinkPassword" type="password" autocomplete="current-password" placeholder="eWeLink App 账号密码" /></label>
+  </div>
+  <div id="account-error-panel" class="account-error-panel" hidden><div><strong>本次操作未完成</strong><p id="account-error-message"></p></div><button type="button" class="btn btn-small btn-outline" id="account-error-copy">复制错误</button></div>
+  <div class="modal-actions"><button type="button" class="btn btn-ghost" id="account-cancel">取消</button><button type="submit" class="btn btn-primary" id="account-submit">登录并同步设备</button></div>
+</form></section></div>
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+<script src="/app.js"></script>
+</body>
+</html>

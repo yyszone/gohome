@@ -1,0 +1,10 @@
+/data/*
+!/data/.gitkeep
+/build/
+/dist/
+*.exe
+/gohome
+*.vault.key
+*.vault.json
+.DS_Store
+.env
