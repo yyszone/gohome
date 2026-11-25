@@ -209,6 +209,7 @@ type integrationManager struct {
 	providerPollMu sync.Mutex
 	activityMu     sync.Mutex
 	pageLeases     map[string]time.Time
+	pollWake       chan struct{}
 	pollRunning    bool
 	pollCancel     context.CancelFunc
 	lastStatePoll  time.Time
@@ -221,6 +222,7 @@ func newIntegrationManager(s *Store, v *vault) *integrationManager {
 		store:        s,
 		vault:        v,
 		pageLeases:   map[string]time.Time{},
+		pollWake:     make(chan struct{}, 1),
 		xiaomi:       map[string]*xiaomiPending{},
 		energyWarnAt: map[string]time.Time{},
 	}
@@ -573,7 +575,12 @@ func (m *integrationManager) importDevices(accountID, provider string, items []D
 		for j := range m.store.data.Devices {
 			if m.store.data.Devices[j].ID == d.ID {
 				old := m.store.data.Devices[j]
-				d.Room = firstNonEmpty(d.Room, old.Room)
+				// A failed/omitted room lookup must not overwrite a previously
+				// known room with the placeholder. A newly resolved provider room
+				// name still takes precedence over the old value.
+				if strings.TrimSpace(d.Room) == "" || strings.EqualFold(strings.TrimSpace(d.Room), "未分区") {
+					d.Room = firstNonEmpty(old.Room, "未分区")
+				}
 				d.CreatedAt = old.CreatedAt
 				if old.Energy != nil {
 					if d.Energy == nil {

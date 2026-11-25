@@ -12,7 +12,6 @@ import (
 const (
 	pageActivityLease         = 20 * time.Second
 	providerStatePollInterval = 10 * time.Second
-	providerPollCheckInterval = 1 * time.Second
 	maxActivePageLeases       = 32
 )
 
@@ -27,6 +26,23 @@ func validPageClientID(id string) bool {
 		}
 	}
 	return true
+}
+
+// pollWakeLocked returns the coalescing wake channel. Call with activityMu held.
+func (m *integrationManager) pollWakeLocked() chan struct{} {
+	if m.pollWake == nil {
+		m.pollWake = make(chan struct{}, 1)
+	}
+	return m.pollWake
+}
+
+// signalPollerLocked wakes the scheduler without blocking request handlers.
+func (m *integrationManager) signalPollerLocked() {
+	ch := m.pollWakeLocked()
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
 }
 
 // updatePageActivity renews or releases a browser-page lease. Multiple tabs
@@ -70,6 +86,7 @@ func (m *integrationManager) updatePageActivity(clientID string, active bool) in
 		// without an active page lease.
 		m.lastStatePoll = time.Time{}
 	}
+	m.signalPollerLocked()
 	count := len(m.pageLeases)
 	m.activityMu.Unlock()
 	return count
@@ -99,17 +116,136 @@ func (m *integrationManager) runProviderStatePoller(ctx context.Context) {
 	if m == nil {
 		return
 	}
-	ticker := time.NewTicker(providerPollCheckInterval)
-	defer ticker.Stop()
 	for {
+		wake, active, wait := m.nextProviderPollWait(time.Now())
+		if !active {
+			// No visible authenticated overview/device page: sleep without a
+			// periodic ticker. The next page lease wakes this goroutine.
+			select {
+			case <-ctx.Done():
+				m.cancelProviderStatePoll()
+				return
+			case <-wake:
+				continue
+			}
+		}
+
+		if wait < 0 {
+			// A provider poll is already in flight. Wait for a lease change or
+			// the earliest lease expiry; do not spin while cloud I/O is pending.
+			leaseTimer := time.NewTimer(m.earliestPageLeaseWait(time.Now()))
+			select {
+			case <-ctx.Done():
+				if !leaseTimer.Stop() {
+					select {
+					case <-leaseTimer.C:
+					default:
+					}
+				}
+				m.cancelProviderStatePoll()
+				return
+			case <-wake:
+				if !leaseTimer.Stop() {
+					select {
+					case <-leaseTimer.C:
+					default:
+					}
+				}
+				continue
+			case <-leaseTimer.C:
+				continue
+			}
+		}
+
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
 			m.cancelProviderStatePoll()
 			return
-		case now := <-ticker.C:
+		case <-wake:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			continue
+		case now := <-timer.C:
 			m.startProviderStatePollIfNeeded(ctx, now)
 		}
 	}
+}
+
+// nextProviderPollWait returns whether a page lease is active and how long
+// the scheduler may sleep. It also schedules a wake at the nearest lease
+// expiry so a crashed browser cannot keep cloud polling alive indefinitely.
+func (m *integrationManager) nextProviderPollWait(now time.Time) (chan struct{}, bool, time.Duration) {
+	if m == nil {
+		return nil, false, 0
+	}
+	m.activityMu.Lock()
+	defer m.activityMu.Unlock()
+	wake := m.pollWakeLocked()
+	earliest := time.Time{}
+	for id, until := range m.pageLeases {
+		if !until.After(now) {
+			delete(m.pageLeases, id)
+			continue
+		}
+		if earliest.IsZero() || until.Before(earliest) {
+			earliest = until
+		}
+	}
+	if len(m.pageLeases) == 0 {
+		m.lastStatePoll = time.Time{}
+		return wake, false, 0
+	}
+	leaseWait := earliest.Sub(now)
+	if leaseWait < 0 {
+		leaseWait = 0
+	}
+	if m.pollRunning {
+		return wake, true, -1
+	}
+	pollWait := time.Duration(0)
+	if !m.lastStatePoll.IsZero() {
+		pollWait = providerStatePollInterval - now.Sub(m.lastStatePoll)
+		if pollWait < 0 {
+			pollWait = 0
+		}
+	}
+	if leaseWait < pollWait {
+		pollWait = leaseWait
+	}
+	return wake, true, pollWait
+}
+
+func (m *integrationManager) earliestPageLeaseWait(now time.Time) time.Duration {
+	if m == nil {
+		return pageActivityLease
+	}
+	m.activityMu.Lock()
+	defer m.activityMu.Unlock()
+	earliest := time.Time{}
+	for id, until := range m.pageLeases {
+		if !until.After(now) {
+			delete(m.pageLeases, id)
+			continue
+		}
+		if earliest.IsZero() || until.Before(earliest) {
+			earliest = until
+		}
+	}
+	if earliest.IsZero() {
+		return 0
+	}
+	return earliest.Sub(now)
 }
 
 func (m *integrationManager) startProviderStatePollIfNeeded(parent context.Context, now time.Time) bool {
@@ -143,6 +279,7 @@ func (m *integrationManager) startProviderStatePollIfNeeded(parent context.Conte
 			m.activityMu.Lock()
 			m.pollRunning = false
 			m.pollCancel = nil
+			m.signalPollerLocked()
 			m.activityMu.Unlock()
 		}()
 		m.refreshAllProviderStates(pollCtx)

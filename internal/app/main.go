@@ -34,7 +34,7 @@ var webFiles embed.FS
 // Build metadata is injected by Makefile from the current Git repository.
 // A source ZIP without .git metadata intentionally reports commit count 0.
 var (
-	version     = "0.2.22-source"
+	version     = "0.2.24-source"
 	buildDate   = "source"
 	commitCount = "0"
 	gitHash     = ""
@@ -126,13 +126,14 @@ type Device struct {
 }
 
 type Account struct {
-	ID        string    `json:"id"`
-	Provider  string    `json:"provider"`
-	Label     string    `json:"label"`
-	Region    string    `json:"region,omitempty"`
-	Status    string    `json:"status"`
-	Note      string    `json:"note"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID          string    `json:"id"`
+	Provider    string    `json:"provider"`
+	Label       string    `json:"label"`                 // 原始账号标识或登录时填写的标签，不作为登录凭证。
+	DisplayName string    `json:"displayName,omitempty"` // 用户自定义显示名称，不影响账号 ID 或 Vault 凭证。
+	Region      string    `json:"region,omitempty"`
+	Status      string    `json:"status"`
+	Note        string    `json:"note"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type Discovery struct {
@@ -760,6 +761,25 @@ func (s *Store) addAccount(a Account) error {
 	return s.saveLocked()
 }
 
+// updateAccountDisplayName changes only the UI alias. It deliberately leaves the
+// account ID, provider, original label, status and encrypted Vault credentials untouched.
+func (s *Store) updateAccountDisplayName(id, displayName string) (Account, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.data.Accounts {
+		if s.data.Accounts[i].ID != id {
+			continue
+		}
+		s.data.Accounts[i].DisplayName = displayName
+		s.addLogLocked("info", "品牌账号显示名称已更新："+firstNonEmpty(displayName, s.data.Accounts[i].Label))
+		if err := s.saveLocked(); err != nil {
+			return Account{}, err
+		}
+		return s.data.Accounts[i], nil
+	}
+	return Account{}, os.ErrNotExist
+}
+
 func (s *Store) deleteAccount(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -895,6 +915,7 @@ func (a *App) routes() {
 	a.mux.HandleFunc("POST /api/v1/devices/{id}/action", a.callMIoTAction)
 	a.mux.HandleFunc("GET /api/accounts", a.listAccounts)
 	a.mux.HandleFunc("POST /api/accounts", a.createAccount) // 旧版占位接口已禁用
+	a.mux.HandleFunc("PATCH /api/accounts/{id}", a.updateAccountDisplayName)
 	a.mux.HandleFunc("DELETE /api/accounts/{id}", a.removeAccount)
 	a.mux.HandleFunc("POST /api/integrations/xiaomi/login", a.xiaomiLogin)
 	a.mux.HandleFunc("POST /api/integrations/xiaomi/captcha", a.xiaomiCaptcha)
@@ -980,6 +1001,7 @@ func (a *App) apiDocs(w http.ResponseWriter, r *http.Request) {
 			{"method": "POST", "path": "/api/auth/logout", "description": "Clear the session cookie"},
 			{"method": "POST", "path": "/api/state-sync/activity", "body": map[string]any{"clientId": "per-tab-id", "active": true}, "description": "Lease visible overview/device page activity to enable provider polling; release when hidden"},
 			{"method": "GET", "path": "/api/v1/devices", "description": "List synchronized devices and discovered controls"},
+			{"method": "PATCH", "path": "/api/accounts/{id}", "body": map[string]any{"displayName": "我的米家账号"}, "description": "Rename only the local account display name; does not change login identity or encrypted credentials"},
 			{"method": "GET", "path": "/api/devices/live?since=REVISION", "description": "Lightweight live-state delta for visible browser pages; returns 204 when unchanged"},
 			{"method": "GET", "path": "/api/v1/devices/{id}", "description": "Get one device, including writable MIoT properties and callable actions"},
 			{"method": "POST", "path": "/api/v1/devices/{id}/command", "body": map[string]any{"command": "turn_on | turn_off | toggle", "channel": "optional outlet number for multi-relay devices"}, "description": "Control a supported switch"},
@@ -1591,6 +1613,32 @@ func validateMIoTValue(format string, value any, options []DeviceControlOption) 
 func (a *App) listAccounts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, a.store.snapshot().Accounts)
 }
+
+func (a *App) updateAccountDisplayName(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		DisplayName string `json:"displayName"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		fail(w, http.StatusBadRequest, "请求格式错误")
+		return
+	}
+	name := strings.TrimSpace(in.DisplayName)
+	if len([]rune(name)) > 48 {
+		fail(w, http.StatusBadRequest, "账号显示名称不能超过 48 个字符")
+		return
+	}
+	if strings.ContainsAny(name, "\r\n\x00") {
+		fail(w, http.StatusBadRequest, "账号显示名称包含无效字符")
+		return
+	}
+	updated, err := a.store.updateAccountDisplayName(r.PathValue("id"), name)
+	if err != nil {
+		fail(w, http.StatusNotFound, "接入账号不存在")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "account": updated})
+}
+
 func (a *App) createAccount(w http.ResponseWriter, r *http.Request) {
 	fail(w, http.StatusGone, "旧版‘记录账号’接口已停用。请到品牌接入页面使用小米登录或 eWeLink 登录。")
 }

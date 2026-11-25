@@ -212,6 +212,61 @@ func xiaomiFetchDevicesForStateRefresh(ctx context.Context, s providerSecret) ([
 	return devices, err
 }
 
+// parseXiaomiHomeRoomNames mirrors the room enrichment used by hass-xiaomi-miot:
+// gethome_merged returns homelist[].roomlist[].dids and each room's name.
+func parseXiaomiHomeRoomNames(body []byte) (map[string]string, error) {
+	var env struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Result  struct {
+			HomeList []struct {
+				RoomList []struct {
+					Name string   `json:"name"`
+					DIDs []string `json:"dids"`
+				} `json:"roomlist"`
+			} `json:"homelist"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, fmt.Errorf("解析小米家庭房间列表失败：%w", err)
+	}
+	if env.Code != 0 {
+		return nil, fmt.Errorf("小米家庭房间接口错误 %d：%s", env.Code, env.Message)
+	}
+	rooms := make(map[string]string)
+	for _, home := range env.Result.HomeList {
+		for _, room := range home.RoomList {
+			name := strings.TrimSpace(room.Name)
+			if name == "" {
+				continue
+			}
+			for _, did := range room.DIDs {
+				if did = strings.TrimSpace(did); did != "" {
+					rooms[did] = name
+				}
+			}
+		}
+	}
+	return rooms, nil
+}
+
+func xiaomiFetchHomeRoomNames(ctx context.Context, secret providerSecret) (map[string]string, error) {
+	payload, err := json.Marshal(map[string]any{
+		"fg": true, "fetch_share": true, "fetch_share_dev": true,
+		"fetch_cariot": true, "limit": 300, "app_ver": 7, "plat_form": 0,
+	})
+	if err != nil {
+		return nil, err
+	}
+	roomCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	body, err := xiaomiEncryptedPost(roomCtx, secret, "/v2/homeroom/gethome_merged", payload)
+	if err != nil {
+		return nil, fmt.Errorf("读取小米家庭房间信息失败：%w", err)
+	}
+	return parseXiaomiHomeRoomNames(body)
+}
+
 func xiaomiFetchDevicesWithOptions(ctx context.Context, s providerSecret, includeEnergyStats, onlineOnly bool) ([]Device, error) {
 	base := xiaomiAPIBase(s.Region)
 	apiURL := base + "/app/home/device_list"
@@ -322,6 +377,24 @@ func xiaomiFetchDevicesWithOptions(ctx context.Context, s providerSecret, includ
 	if envelope.Code != 0 {
 		return nil, fmt.Errorf("小米云端错误 %d: %s", envelope.Code, envelope.Message)
 	}
+	roomNames := map[string]string{}
+	if !onlineOnly {
+		needsRooms := false
+		for _, item := range envelope.Result.List {
+			if strings.TrimSpace(item.RoomName) == "" {
+				needsRooms = true
+				break
+			}
+		}
+		if needsRooms {
+			// Room metadata is fetched only during explicit account sync, not the
+			// active-page live state poll. A room lookup failure must not block
+			// device discovery or invalidate the saved Xiaomi login session.
+			if names, roomErr := xiaomiFetchHomeRoomNames(ctx, s); roomErr == nil {
+				roomNames = names
+			}
+		}
+	}
 	out := make([]Device, 0, len(envelope.Result.List))
 	for _, x := range envelope.Result.List {
 		if x.DID == "" {
@@ -329,7 +402,8 @@ func xiaomiFetchDevicesWithOptions(ctx context.Context, s providerSecret, includ
 		}
 		online := boolValue(x.Online)
 		cat := guessCategory(x.Name, x.Model)
-		out = append(out, Device{ID: "xiaomi-" + safeID(x.DID), RemoteID: x.DID, Name: firstNonEmpty(x.Name, x.Model, x.DID), Brand: "小米", Model: x.Model, Room: firstNonEmpty(x.RoomName, "未分区"), Category: cat, Protocol: "xiaomi-cloud", Online: online, LastSeen: time.Now(), Demo: false, CreatedAt: time.Now()})
+		room := firstNonEmpty(x.RoomName, roomNames[x.DID], "未分区")
+		out = append(out, Device{ID: "xiaomi-" + safeID(x.DID), RemoteID: x.DID, Name: firstNonEmpty(x.Name, x.Model, x.DID), Brand: "小米", Model: x.Model, Room: room, Category: cat, Protocol: "xiaomi-cloud", Online: online, LastSeen: time.Now(), Demo: false, CreatedAt: time.Now()})
 	}
 	// Read useful read-only MIoT properties for every supported device class.
 	// Unsupported models remain in the list with their online/offline state.

@@ -227,6 +227,58 @@ func ewelinkFetchDevicesWithClient(ctx context.Context, s providerSecret, client
 	return devices, err
 }
 
+// parseEwelinkRoomNames parses the official GET /v2/family response.
+// Device itemData.family.roomid is an ID, not a display name.
+func parseEwelinkRoomNames(body []byte) (map[string]string, error) {
+	var env struct {
+		Error int    `json:"error"`
+		Msg   string `json:"msg"`
+		Data  struct {
+			FamilyList []struct {
+				RoomList []struct {
+					ID   any    `json:"id"`
+					Name string `json:"name"`
+				} `json:"roomList"`
+			} `json:"familyList"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, fmt.Errorf("解析 eWeLink 房间列表失败：%w", err)
+	}
+	if env.Error != 0 {
+		return nil, fmt.Errorf("读取 eWeLink 房间列表失败（%d）：%s", env.Error, env.Msg)
+	}
+	rooms := make(map[string]string)
+	for _, family := range env.Data.FamilyList {
+		for _, room := range family.RoomList {
+			id, name := strings.TrimSpace(stringValue(room.ID)), strings.TrimSpace(room.Name)
+			if id != "" && name != "" {
+				rooms[id] = name
+			}
+		}
+	}
+	return rooms, nil
+}
+
+func ewelinkFetchRoomNames(ctx context.Context, s providerSecret, client *http.Client, baseURL string) (map[string]string, error) {
+	endpoint := strings.TrimRight(baseURL, "/") + "/v2/family?lang=cn"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	setEwelinkHeaders(req, s.AppID, s.AppSecret, nil, true)
+	req.Header.Set("Authorization", "Bearer "+s.AccessToken)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求 eWeLink 家庭/房间列表失败：%w", err)
+	}
+	body, err := readBody(resp)
+	if err != nil {
+		return nil, err
+	}
+	return parseEwelinkRoomNames(body)
+}
+
 // ewelinkFetchDevicesWithClientAndKeys uses the documented GET /v2/device/thing list endpoint.
 func ewelinkFetchDevicesWithClientAndKeys(ctx context.Context, s providerSecret, client *http.Client, baseURL string) ([]Device, map[string]string, error) {
 	return ewelinkFetchDevicesWithClientAndKeysOptions(ctx, s, client, baseURL, false)
@@ -264,7 +316,7 @@ func ewelinkFetchDevicesWithClientAndKeysOptions(ctx context.Context, s provider
 					DeviceKey    string         `json:"devicekey"`
 					Params       map[string]any `json:"params"`
 					Family       struct {
-						RoomID string `json:"roomid"`
+						RoomID any `json:"roomid"`
 					} `json:"family"`
 				} `json:"itemData"`
 			} `json:"thingList"`
@@ -275,6 +327,23 @@ func ewelinkFetchDevicesWithClientAndKeysOptions(ctx context.Context, s provider
 	}
 	if env.Error != 0 {
 		return nil, nil, fmt.Errorf("eWeLink 设备清单 API 错误（%d）：%s", env.Error, env.Msg)
+	}
+	roomNames := map[string]string{}
+	if !forceStatusRefresh {
+		needsRooms := false
+		for _, item := range env.Data.ThingList {
+			if strings.TrimSpace(stringValue(item.ItemData.Family.RoomID)) != "" {
+				needsRooms = true
+				break
+			}
+		}
+		if needsRooms {
+			// Resolve room IDs only during explicit account/device sync. The live
+			// status poll reuses the already stored room and never calls /v2/family.
+			if names, roomErr := ewelinkFetchRoomNames(ctx, s, client, baseURL); roomErr == nil {
+				roomNames = names
+			}
+		}
 	}
 	// Some eWeLink list responses omit the live params for an online device.
 	// Query its status once during sync so supported switches are not
@@ -349,7 +418,8 @@ func ewelinkFetchDevicesWithClientAndKeysOptions(ctx context.Context, s provider
 		// Single-relay devices expose params.switch; multi-relay devices
 		// commonly expose params.switches as [{outlet, switch}, ...].
 		canControl := power != nil || len(channels) > 0
-		dev := Device{ID: "ewelink-" + safeID(d.DeviceID), RemoteID: d.DeviceID, Name: firstNonEmpty(d.Name, d.ProductModel, d.DeviceID), Brand: brand, Model: d.ProductModel, Room: firstNonEmpty(d.Family.RoomID, "未分区"), Category: guessCategory(d.Name, d.ProductModel), Protocol: "ewelink-cloud", Online: d.Online, Power: power, Channels: channels, CanControl: canControl, Energy: parseEwelinkEnergyMetrics(d.Params, d.ProductModel), Attributes: parseEwelinkDeviceAttributes(d.Params), LastSeen: time.Now(), CreatedAt: time.Now(), StateRead: statusFresh[itemIndex]}
+		roomName := roomNames[strings.TrimSpace(stringValue(d.Family.RoomID))]
+		dev := Device{ID: "ewelink-" + safeID(d.DeviceID), RemoteID: d.DeviceID, Name: firstNonEmpty(d.Name, d.ProductModel, d.DeviceID), Brand: brand, Model: d.ProductModel, Room: firstNonEmpty(roomName, "未分区"), Category: guessCategory(d.Name, d.ProductModel), Protocol: "ewelink-cloud", Online: d.Online, Power: power, Channels: channels, CanControl: canControl, Energy: parseEwelinkEnergyMetrics(d.Params, d.ProductModel), Attributes: parseEwelinkDeviceAttributes(d.Params), LastSeen: time.Now(), CreatedAt: time.Now(), StateRead: statusFresh[itemIndex]}
 		dev.Value = summarizeDeviceAttributes(&dev)
 		out = append(out, dev)
 	}

@@ -1339,12 +1339,22 @@ func TestStorePersistsData(t *testing.T) {
 	}
 }
 
-func TestEwelinkDeviceListUsesOfficialGetEndpoint(t *testing.T) {
+func TestEwelinkDeviceListUsesOfficialGetEndpointAndResolvesRoomName(t *testing.T) {
 	var gotMethod, gotPath, gotAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotMethod, gotPath, gotAuth = r.Method, r.URL.RequestURI(), r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"error":0,"msg":"","data":{"total":2,"thingList":[{"itemType":1,"itemData":{"deviceid":"1001","name":"客厅插座","productModel":"S26R2","brandName":"SONOFF","online":true,"devicekey":"local-key-1","params":{"switch":"on"},"family":{"roomid":"客厅"}}},{"itemType":3,"itemData":{"deviceid":"group-1","name":"组"}}]}}`))
+		switch r.URL.Path {
+		case "/v2/device/thing":
+			gotMethod, gotPath, gotAuth = r.Method, r.URL.RequestURI(), r.Header.Get("Authorization")
+			_, _ = w.Write([]byte(`{"error":0,"msg":"","data":{"total":2,"thingList":[{"itemType":1,"itemData":{"deviceid":"1001","name":"客厅插座","productModel":"S26R2","brandName":"SONOFF","online":true,"devicekey":"local-key-1","params":{"switch":"on"},"family":{"roomid":"room-1"}}},{"itemType":3,"itemData":{"deviceid":"group-1","name":"组"}}]}}`))
+		case "/v2/family":
+			if r.Method != http.MethodGet || r.URL.Query().Get("lang") != "cn" || r.Header.Get("Authorization") != "Bearer access-token" {
+				t.Fatalf("unexpected family request: %s %s auth=%q", r.Method, r.URL.String(), r.Header.Get("Authorization"))
+			}
+			_, _ = w.Write([]byte(`{"error":0,"msg":"","data":{"familyList":[{"id":"home-1","name":"我的家","roomList":[{"id":"room-1","name":"客厅"},{"id":"room-2","name":"卧室"}]}]}}`))
+		default:
+			t.Fatalf("unexpected endpoint: %s", r.URL.Path)
+		}
 	}))
 	defer server.Close()
 
@@ -1361,6 +1371,9 @@ func TestEwelinkDeviceListUsesOfficialGetEndpoint(t *testing.T) {
 	}
 	if len(devices) != 1 || devices[0].RemoteID != "1001" || devices[0].Power == nil || !*devices[0].Power || !devices[0].CanControl {
 		t.Fatalf("unexpected parsed devices: %+v", devices)
+	}
+	if devices[0].Room != "客厅" {
+		t.Fatalf("room id should be resolved to room name, got %q", devices[0].Room)
 	}
 	if keys["1001"] != "local-key-1" {
 		t.Fatalf("device key not parsed: %#v", keys)
@@ -1438,7 +1451,7 @@ func TestEwelinkStateRefreshQueriesLatestStatusEvenWhenListHasParams(t *testing.
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v2/device/thing":
-			_, _ = w.Write([]byte(`{"error":0,"msg":"success","data":{"thingList":[{"itemType":1,"itemData":{"deviceid":"poll-plug-1","name":"External switch","productModel":"MINI-R4","brandName":"SONOFF","online":true,"devicekey":"device-key","params":{"switch":"on"}}}]}}`))
+			_, _ = w.Write([]byte(`{"error":0,"msg":"success","data":{"thingList":[{"itemType":1,"itemData":{"deviceid":"poll-plug-1","name":"External switch","productModel":"MINI-R4","brandName":"SONOFF","online":true,"devicekey":"device-key","params":{"switch":"on"},"family":{"roomid":"room-1"}}}]}}`))
 		case "/v2/device/thing/status":
 			statusCalls++
 			_, _ = w.Write([]byte(`{"error":0,"msg":"success","data":{"params":{"switch":"off"}}}`))
@@ -2169,6 +2182,31 @@ func TestEwelinkDeviceAttributesExposeSensorReadings(t *testing.T) {
 	}
 }
 
+func TestImportDevicesPreservesKnownRoomWhenProviderRoomLookupHasNoName(t *testing.T) {
+	store, err := newStore(filepath.Join(t.TempDir(), "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := &integrationManager{store: store}
+	manager.importDevices("account-1", "ewelink", []Device{{
+		ID: "ewelink-room-1", AccountID: "account-1", Name: "插座", Room: "客厅", Protocol: "ewelink-cloud",
+	}})
+	manager.importDevices("account-1", "ewelink", []Device{{
+		ID: "ewelink-room-1", AccountID: "account-1", Name: "插座", Room: "未分区", Protocol: "ewelink-cloud",
+	}})
+	devices := store.snapshot().Devices
+	if len(devices) != 1 || devices[0].Room != "客厅" {
+		t.Fatalf("unresolved room lookup must preserve prior room name: %+v", devices)
+	}
+	manager.importDevices("account-1", "ewelink", []Device{{
+		ID: "ewelink-room-1", AccountID: "account-1", Name: "插座", Room: "卧室", Protocol: "ewelink-cloud",
+	}})
+	devices = store.snapshot().Devices
+	if len(devices) != 1 || devices[0].Room != "卧室" {
+		t.Fatalf("newly resolved room name should replace old room: %+v", devices)
+	}
+}
+
 func TestImportDevicesPreservesPreviousAttributesWhenRefreshHasNone(t *testing.T) {
 	a := testApp(t)
 	old := Device{ID: "xiaomi-sensor", Name: "卧室温湿度计", Brand: "小米", Category: "温湿度计", Attributes: []DeviceAttribute{{Key: "temperature", Label: "温度", Value: "23.5", Unit: "°C"}}, Value: "温度 23.5°C"}
@@ -2533,6 +2571,37 @@ func TestPageActivityLeaseExpires(t *testing.T) {
 	}
 }
 
+func TestProviderPollSchedulerSleepsUntilPageLease(t *testing.T) {
+	m := &integrationManager{pageLeases: map[string]time.Time{}}
+	wake, active, wait := m.nextProviderPollWait(time.Now())
+	if active || wait != 0 {
+		t.Fatalf("idle scheduler should wait for an event, active=%v wait=%s", active, wait)
+	}
+	if wake == nil {
+		t.Fatal("idle scheduler must expose a wake channel")
+	}
+	m.updatePageActivity("web-tab-00000001", true)
+	select {
+	case <-wake:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("new page lease did not wake the idle poll scheduler")
+	}
+	_, active, wait = m.nextProviderPollWait(time.Now())
+	if !active || wait != 0 {
+		t.Fatalf("new page lease should trigger an immediate first poll, active=%v wait=%s", active, wait)
+	}
+	m.updatePageActivity("web-tab-00000001", false)
+	select {
+	case <-wake:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("page release did not wake the poll scheduler")
+	}
+	_, active, _ = m.nextProviderPollWait(time.Now())
+	if active {
+		t.Fatal("released page lease must disable provider polling")
+	}
+}
+
 func TestProviderPollingRequiresActivePage(t *testing.T) {
 	m := &integrationManager{}
 	if m.startProviderStatePollIfNeeded(context.Background(), time.Now()) {
@@ -2578,5 +2647,76 @@ func TestStateSyncActivityEndpointRequiresLogin(t *testing.T) {
 	a.ServeHTTP(resp, req)
 	if resp.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated activity endpoint status=%d want=%d", resp.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestParseEwelinkRoomNames(t *testing.T) {
+	rooms, err := parseEwelinkRoomNames([]byte(`{"error":0,"data":{"familyList":[{"roomList":[{"id":"r1","name":"客厅"},{"id":"r2","name":"卧室"}]},{"roomList":[{"id":3,"name":"书房"}]}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rooms["r1"] != "客厅" || rooms["r2"] != "卧室" || rooms["3"] != "书房" {
+		t.Fatalf("unexpected room mapping: %#v", rooms)
+	}
+}
+
+func TestParseXiaomiHomeRoomNames(t *testing.T) {
+	rooms, err := parseXiaomiHomeRoomNames([]byte(`{"code":0,"result":{"homelist":[{"name":"我的家","roomlist":[{"name":"客厅","dids":["did-1","did-2"]},{"name":"卧室","dids":["did-3"]}]}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rooms["did-1"] != "客厅" || rooms["did-2"] != "客厅" || rooms["did-3"] != "卧室" {
+		t.Fatalf("unexpected Xiaomi room mapping: %#v", rooms)
+	}
+}
+
+func TestUpdateAccountDisplayNameDoesNotChangeLoginIdentity(t *testing.T) {
+	a := testApp(t)
+	original := Account{
+		ID: "account-stable-1", Provider: "xiaomi", Label: "user@example.com",
+		Region: "cn", Status: "connected", Note: "已连接", CreatedAt: time.Now().UTC(),
+	}
+	if err := a.store.addAccount(original); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPatch, "/api/accounts/account-stable-1", strings.NewReader(`{"displayName":"客厅米家账号"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	a.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("rename status=%d body=%s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Account Account `json:"account"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	got := payload.Account
+	if got.ID != original.ID || got.Provider != original.Provider || got.Label != original.Label || got.Region != original.Region || got.Status != original.Status {
+		t.Fatalf("rename must not mutate account identity or auth metadata: before=%+v after=%+v", original, got)
+	}
+	if got.DisplayName != "客厅米家账号" {
+		t.Fatalf("display name not persisted: %+v", got)
+	}
+	// Ordinary sync status updates must not reset the UI alias or touch identity.
+	manager := &integrationManager{store: a.store}
+	manager.setAccountStatus(original.ID, "sync_error", "临时同步失败")
+	statusUpdated := a.store.snapshot().Accounts[0]
+	if statusUpdated.DisplayName != "客厅米家账号" || statusUpdated.ID != original.ID || statusUpdated.Label != original.Label {
+		t.Fatalf("status update must preserve display alias and login identity: %+v", statusUpdated)
+	}
+
+	// An empty name restores the original label without removing the account.
+	reset := httptest.NewRequest(http.MethodPatch, "/api/accounts/account-stable-1", strings.NewReader(`{"displayName":"  "}`))
+	reset.Header.Set("Content-Type", "application/json")
+	resetResponse := httptest.NewRecorder()
+	a.ServeHTTP(resetResponse, reset)
+	if resetResponse.Code != http.StatusOK {
+		t.Fatalf("reset display name status=%d body=%s", resetResponse.Code, resetResponse.Body.String())
+	}
+	accounts := a.store.snapshot().Accounts
+	if len(accounts) != 1 || accounts[0].DisplayName != "" || accounts[0].ID != original.ID {
+		t.Fatalf("reset must keep original connected account: %+v", accounts)
 	}
 }

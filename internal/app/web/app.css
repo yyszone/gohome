@@ -442,3 +442,6 @@
 .verify-channel-row{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:9px;margin:8px 0;color:#7c8799;font-size:10px}
 .verify-channel-row select{height:34px;border:1px solid #e5e8ef;border-radius:7px;padding:0 9px;background:#fff;color:#46536a;font:11px inherit}
 @media(max-width:600px){.login-card{padding:27px 22px}.btn-logout{padding:6px 8px;font-size:9px}}
+
+/* Brand account display-name action. */
+.rename-link{border:0;background:none;color:#8179db;font-size:10px;cursor:pointer;padding:6px 2px}.rename-link:hover{color:#5f56c8;text-decoration:underline}.account-buttons{flex-wrap:wrap}
