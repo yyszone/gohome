@@ -2661,12 +2661,67 @@ func TestParseEwelinkRoomNames(t *testing.T) {
 }
 
 func TestParseXiaomiHomeRoomNames(t *testing.T) {
-	rooms, err := parseXiaomiHomeRoomNames([]byte(`{"code":0,"result":{"homelist":[{"name":"我的家","roomlist":[{"name":"客厅","dids":["did-1","did-2"]},{"name":"卧室","dids":["did-3"]}]}]}}`))
+	body := []byte(`{"code":0,"result":{"devices":{"did-0":{"room_name":"书房"}},"homelist":[{"name":"我的家","dids":["home-level"],"roomlist":[{"name":"客厅","dids":["did-1","did-2"]},{"name":"卧室","dids":["did-3"]},{"name":"阳台","dids":[1003]}]}],"share_home_list":[{"name":"共享家庭","roomlist":[{"name":"儿童房","dids":["shared-1"]}]}]}}`)
+	rooms, err := parseXiaomiHomeRoomNames(body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rooms["did-1"] != "客厅" || rooms["did-2"] != "客厅" || rooms["did-3"] != "卧室" {
-		t.Fatalf("unexpected Xiaomi room mapping: %#v", rooms)
+	for did, want := range map[string]string{
+		"did-0": "书房", "did-1": "客厅", "did-2": "客厅", "did-3": "卧室",
+		"1003": "阳台", "shared-1": "儿童房", "home-level": "我的家",
+	} {
+		if rooms[did] != want {
+			t.Fatalf("room mapping %q=%q, want %q; all=%#v", did, rooms[did], want, rooms)
+		}
+	}
+}
+
+func TestXiaomiRoomNamesCoverDevices(t *testing.T) {
+	roomNames := map[string]string{"did-1": "客厅"}
+	if xiaomiRoomNamesCoverDevices(roomNames, []string{"did-1", "did-2"}) {
+		t.Fatal("partial room map must not suppress the gethome fallback")
+	}
+	if !xiaomiRoomNamesCoverDevices(map[string]string{"did-1": "客厅", "did-2": "卧室"}, []string{"did-1", "did-2"}) {
+		t.Fatal("complete room map should avoid the fallback request")
+	}
+	if got := countMatchedXiaomiRoomNames(roomNames, []string{"did-1", "did-2"}); got != 1 {
+		t.Fatalf("matched count=%d, want 1", got)
+	}
+}
+
+func TestParseXiaomiRoomPageUsesInitialHomeRoomIDs(t *testing.T) {
+	initial := []byte(`{"code":0,"result":{"homelist":[{"id":100,"name":"我的家","dids":["home-device"],"roomlist":[{"id":10,"name":"主卧","dids":["first-page-device"]},{"id":11,"name":"客厅","dids":[]}]}],"share_home_list":[{"id":"shared-home","name":"共享家庭","roomlist":[{"id":"shared-room","name":"儿童房","dids":[]}]}]}}`)
+	homeIndex, err := parseXiaomiHomeRoomIndex(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"code":0,"result":{"info":[{"id":"100","dids":["home-device-2"],"roomlist":[{"id":"10","dids":["did-a",2002]},{"id":11,"dids":["did-living"]}]},{"id":"shared-home","roomlist":[{"id":"shared-room","dids":["shared-device"]}]}],"max_id":"next-page","has_more":true}}`)
+	rooms, nextID, hasMore, err := parseXiaomiRoomPage(body, homeIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for did, want := range map[string]string{
+		"home-device-2": "我的家", "did-a": "主卧", "2002": "主卧",
+		"did-living": "客厅", "shared-device": "儿童房",
+	} {
+		if rooms[did] != want {
+			t.Fatalf("room mapping %q=%q, want %q; all=%#v", did, rooms[did], want, rooms)
+		}
+	}
+	if nextID != "next-page" || !hasMore {
+		t.Fatalf("unexpected Xiaomi page cursor: next=%q more=%t", nextID, hasMore)
+	}
+}
+
+func TestLogXiaomiRoomSyncResultAddsActionableWarning(t *testing.T) {
+	a := testApp(t)
+	logXiaomiRoomSyncResult(a.store, []Device{
+		{Name: "小冰箱", Room: "未分区"},
+		{Name: "插座测试", Room: "未分区"},
+	})
+	logs := a.store.snapshot().Logs
+	if len(logs) == 0 || logs[0].Level != "warn" || !strings.Contains(logs[0].Message, "小冰箱") || !strings.Contains(logs[0].Message, "gethome_merged") {
+		t.Fatalf("expected actionable Xiaomi room warning, got %+v", logs)
 	}
 }
 

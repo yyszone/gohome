@@ -195,6 +195,7 @@ func (m *integrationManager) xiaomiSubmit(ctx context.Context, client *http.Clie
 			m.setAccountStatus(id, "sync_error", "登录成功，但设备同步失败："+err.Error())
 			return map[string]any{"account": ac, "connected": true, "deviceCount": 0, "warning": "账号已登录，但暂时无法读取设备清单：" + err.Error()}, nil
 		}
+		logXiaomiRoomSyncResult(m.store, devices)
 		m.importDevices(id, "xiaomi", devices)
 		m.setAccountStatus(id, "connected", fmt.Sprintf("已授权 · 已同步 %d 台设备", len(devices)))
 		account, _ := m.findAccount(id)

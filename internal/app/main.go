@@ -34,7 +34,7 @@ var webFiles embed.FS
 // Build metadata is injected by Makefile from the current Git repository.
 // A source ZIP without .git metadata intentionally reports commit count 0.
 var (
-	version     = "0.2.24-source"
+	version     = "0.2.25-source"
 	buildDate   = "source"
 	commitCount = "0"
 	gitHash     = ""
@@ -123,6 +123,7 @@ type Device struct {
 	CreatedAt     time.Time         `json:"createdAt"`
 	StateRead     bool              `json:"-"` // true only when the provider returned a fresh live-state response.
 	StateIssue    string            `json:"-"` // transient provider diagnostic; never persisted or returned to clients.
+	roomIssue     string            `json:"-"` // transient room-metadata lookup diagnostic, used only for sync logs.
 }
 
 type Account struct {
@@ -1220,7 +1221,11 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 		// The next page-active provider poll (10s cadence) confirms the physical
 		// relay. Do not issue a fast one-shot read here; Xiaomi may briefly return
 		// its cached pre-command value and make the switch appear to bounce back.
-		_ = updated
+		stateText := "已关闭"
+		if enabled {
+			stateText = "已开启"
+		}
+		a.store.addLog("success", fmt.Sprintf("[小米] %s 开关%s", device.Name, stateText))
 		writeJSON(w, http.StatusOK, updated)
 		return
 	}
@@ -1237,6 +1242,7 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 		var err error
 		secret, err = a.integrations.ensureEwelinkToken(r.Context(), device.AccountID, secret)
 		if err != nil {
+			a.store.addLog("error", "[易微联] 刷新控制令牌失败："+sanitizeIntegrationLog(err.Error()))
 			fail(w, 502, err.Error())
 			return
 		}
@@ -1285,6 +1291,7 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := ewelinkCommandChannel(r.Context(), secret, device.RemoteID, command, channel, multiChannel); err != nil {
+			a.store.addLog("error", "[易微联] 设备控制失败："+sanitizeIntegrationLog(err.Error()))
 			fail(w, 502, err.Error())
 			return
 		}
@@ -1305,11 +1312,21 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, err.Error())
 			return
 		}
+		stateText := "已关闭"
+		if v {
+			stateText = "已开启"
+		}
+		if multiChannel {
+			a.store.addLog("success", fmt.Sprintf("[易微联] %s 通道 %d %s", device.Name, channel+1, stateText))
+		} else {
+			a.store.addLog("success", fmt.Sprintf("[易微联] %s %s", device.Name, stateText))
+		}
 		writeJSON(w, 200, device)
 		return
 	}
 	d, err := a.store.commandDevice(id, in.Command)
 	if err != nil {
+		a.store.addLog("error", fmt.Sprintf("[本地设备] 设备 %s 控制失败：%s", id, sanitizeIntegrationLog(err.Error())))
 		if errors.Is(err, os.ErrNotExist) {
 			fail(w, 404, err.Error())
 		} else {
@@ -1317,6 +1334,11 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	stateText := "已关闭"
+	if d.Power != nil && *d.Power {
+		stateText = "已开启"
+	}
+	a.store.addLog("success", fmt.Sprintf("[本地设备] %s %s", d.Name, stateText))
 	writeJSON(w, 200, d)
 }
 
@@ -1654,7 +1676,7 @@ func (a *App) xiaomiLogin(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "请求格式错误")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 50*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	result, err := a.integrations.xiaomiLogin(ctx, in.Username, in.Password, in.Region, in.Label)
 	if err != nil {
@@ -1678,7 +1700,7 @@ func (a *App) xiaomiCaptcha(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "请输入验证码")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 50*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	result, err := a.integrations.xiaomiCaptcha(ctx, in.ChallengeID, in.Code)
 	if err != nil {
@@ -1728,7 +1750,7 @@ func (a *App) xiaomiVerify(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "请求格式错误")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 55*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	result, err := a.integrations.xiaomiVerifyTicket(ctx, in.ChallengeID, in.Ticket)
 	if err != nil {
@@ -1758,7 +1780,7 @@ func (a *App) ewelinkLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, result)
 }
 func (a *App) syncAccount(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 	count, err := a.integrations.syncAccount(ctx, r.PathValue("id"))
 	if err != nil {

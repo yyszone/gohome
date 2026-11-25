@@ -1,8 +1,16 @@
 # 源码基线说明
 
-GoHome v0.2.24 基于当前可取得的完整 GoHome v0.2.23 源码 ZIP 修改。v0.2.23 ZIP 本身基于归档中的 v0.2.22 源码树。
+GoHome v0.2.25 基于当前工作区中的 GoHome v0.2.24 源码修改。v0.2.24 源码基于可取得的完整 GoHome v0.2.23 源码 ZIP；v0.2.23 ZIP 本身基于归档中的 v0.2.22 源码树。
 
 历史归档存在来源限制：更早的 v0.2.17 / v0.2.18 快照曾基于当时可取得的 v0.2.15 源码树；未取得完整 v0.2.16 源码 ZIP。因此，如果用户本机 Git 工作区有未进入 v0.2.22 / v0.2.23 归档的额外实现（例如独立开发的 eWeLink Cloud4 WebSocket 或其他驱动），升级前必须先比较并合并，不要直接覆盖生产目录。
+
+## v0.2.25 修改范围
+
+- `internal/app/providers_xiaomi_miot.go`：按 HA 的 `gethome_merged` 逻辑扩展主家庭、共享家庭、设备映射和 DID 类型解析；无映射时按官方 Xiaomi Home 集成回退到 `gethome` 与 `get_dev_room_page` 分页接口；保留房间查询错误到同步期日志。
+- `internal/app/main.go`：小米/eWeLink 开关控制成功、eWeLink Token 刷新失败及控制失败均进入运行日志；增加瞬时房间查询诊断字段；放宽小米同步 HTTP 超时。
+- `internal/app/integration_manager.go` / `providers_xiaomi_auth.go`：小米同步后写入房间映射汇总/错误日志。
+- `internal/app/web/app.js`：开关、MIoT 属性与动作操作后刷新本地运行日志。
+- `internal/app/main_test.go`：增加数字 DID、共享家庭、预合并设备映射、房间分页与同步诊断日志测试。
 
 ## v0.2.24 修改范围
 

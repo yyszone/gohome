@@ -301,6 +301,35 @@ func (m *integrationManager) deleteXiaomiPending(id string) {
 	}
 }
 
+func logXiaomiRoomSyncResult(store *Store, devices []Device) {
+	if store == nil || len(devices) == 0 {
+		return
+	}
+	unassigned := make([]string, 0, len(devices))
+	for _, device := range devices {
+		room := strings.TrimSpace(device.Room)
+		if room == "" || room == "未分区" {
+			unassigned = append(unassigned, device.Name)
+		}
+	}
+	if len(unassigned) == 0 {
+		store.addLog("success", fmt.Sprintf("[小米] 房间信息同步完成：%d 台设备均已取得房间名称", len(devices)))
+		return
+	}
+	roomIssue := ""
+	for _, device := range devices {
+		if issue := strings.TrimSpace(device.roomIssue); issue != "" {
+			roomIssue = issue
+			break
+		}
+	}
+	if roomIssue != "" {
+		store.addLog("warn", fmt.Sprintf("[小米] 房间接口查询失败：%s。未分区设备：%s。设备清单仍已正常同步。", truncate(roomIssue, 320), strings.Join(unassigned, "、")))
+		return
+	}
+	store.addLog("warn", fmt.Sprintf("[小米] 房间名称未匹配：%d/%d 台设备仍显示未分区（%s）。gethome_merged/gethome 返回成功但未建立这些 DID 的房间关联；请确认米家 App 中已给设备分配房间。", len(unassigned), len(devices), strings.Join(unassigned, "、")))
+}
+
 func (m *integrationManager) saveXiaomiAccountAndSync(ctx context.Context, secret providerSecret, label string) (map[string]any, error) {
 	id := newID()
 	ac := Account{ID: id, Provider: "xiaomi", Label: firstNonEmpty(label, secret.Username), Region: secret.Region, Status: "connected", Note: "小米账号已授权，正在同步云端设备", CreatedAt: time.Now()}
@@ -317,6 +346,7 @@ func (m *integrationManager) saveXiaomiAccountAndSync(ctx context.Context, secre
 		account, _ := m.findAccount(id)
 		return map[string]any{"account": account, "connected": true, "deviceCount": 0, "warning": "小米授权成功，但设备清单读取失败：" + err.Error()}, nil
 	}
+	logXiaomiRoomSyncResult(m.store, devices)
 	m.importDevices(id, "xiaomi", devices)
 	m.setAccountStatus(id, "connected", fmt.Sprintf("已授权 · 已同步 %d 台设备", len(devices)))
 	account, _ := m.findAccount(id)
@@ -492,6 +522,9 @@ func (m *integrationManager) syncAccount(ctx context.Context, id string) (int, e
 	if err != nil {
 		m.setAccountStatus(id, "sync_error", "设备同步失败："+err.Error())
 		return 0, err
+	}
+	if secret.Provider == "xiaomi" {
+		logXiaomiRoomSyncResult(m.store, devices)
 	}
 	m.importDevices(id, secret.Provider, devices)
 	m.setAccountStatus(id, "connected", fmt.Sprintf("已授权 · 已同步 %d 台设备", len(devices)))

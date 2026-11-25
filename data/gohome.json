@@ -13,7 +13,7 @@
       "online": true,
       "power": false,
       "canControl": true,
-      "lastSeen": "2026-11-25T09:37:25.949069439+08:00",
+      "lastSeen": "2026-11-25T09:56:34.603442045+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.275280153+08:00"
     },
@@ -24,10 +24,10 @@
       "name": "电量插座",
       "brand": "coolkit",
       "model": "CK-BL602-SWP1-01(182)",
-      "room": "未分区",
+      "room": "室外",
       "category": "插座",
       "protocol": "ewelink-cloud",
-      "online": false,
+      "online": true,
       "power": true,
       "channels": [
         {
@@ -58,15 +58,17 @@
       "canControl": true,
       "energy": {
         "supported": true,
-        "powerW": 62.98,
-        "voltageV": 230.15,
-        "currentA": 0.35,
+        "powerW": 96.64,
+        "voltageV": 230.28,
+        "currentA": 0.55,
+        "todayKWh": 0.019499107798143005,
+        "weekKWh": 0,
         "source": "eWeLink",
-        "todaySource": "云端未返回日累计；等待有效功率或月累计采样",
+        "todaySource": "本机功率积分估算 · 从首次采集开始",
         "weekSource": "云端周统计仅部分型号提供；等待本机每日累计",
-        "updatedAt": "2026-11-25T09:37:35.745904642+08:00"
+        "updatedAt": "2026-11-25T10:01:33.419139279+08:00"
       },
-      "lastSeen": "2026-11-25T09:32:12.904124412+08:00",
+      "lastSeen": "2026-11-25T09:56:34.603442045+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.277178402+08:00"
     },
@@ -109,7 +111,7 @@
         }
       ],
       "canControl": true,
-      "lastSeen": "2026-11-25T09:32:12.904128977+08:00",
+      "lastSeen": "2026-11-25T09:51:18.648979515+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.278053322+08:00"
     },
@@ -126,7 +128,7 @@
       "online": false,
       "power": true,
       "canControl": true,
-      "lastSeen": "2026-11-25T09:32:12.904129524+08:00",
+      "lastSeen": "2026-11-25T09:51:18.648979901+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.278823164+08:00"
     },
@@ -143,7 +145,7 @@
       "online": false,
       "power": true,
       "canControl": true,
-      "lastSeen": "2026-11-25T09:32:12.904131238+08:00",
+      "lastSeen": "2026-11-25T09:51:18.648980336+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.280064472+08:00"
     },
@@ -185,7 +187,7 @@
       "energy": {
         "supported": true,
         "source": "小米 MIoT",
-        "updatedAt": "2026-11-25T09:37:35.836483315+08:00"
+        "updatedAt": "2026-11-25T10:01:33.506746939+08:00"
       },
       "attributes": [
         {
@@ -206,72 +208,25 @@
         }
       ],
       "value": "温度 35°C · 开关状态 关闭",
-      "lastSeen": "2026-11-25T09:34:47.377222879+08:00",
+      "lastSeen": "2026-11-25T09:58:55.157964561+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:27:08.251641356+08:00"
     },
     {
-      "id": "xiaomi-128781403",
+      "id": "xiaomi-blt-3-1lt8e7eeoco01",
       "accountId": "a04e929e7567fb21",
-      "remoteId": "128781403",
-      "name": "插座测试",
+      "remoteId": "blt.3.1lt8e7eeoco01",
+      "name": "温湿度计",
       "brand": "小米",
-      "model": "chuangmi.plug.m3",
-      "room": "未分区",
-      "category": "插座",
+      "model": "miaomiaoce.sensor_ht.t2",
+      "room": "卧室",
+      "category": "温湿度计",
       "protocol": "xiaomi-cloud",
-      "online": true,
-      "power": true,
-      "canControl": true,
-      "controls": [
-        {
-          "id": "prop:2:1",
-          "kind": "property",
-          "name": "电源开关",
-          "description": "Switch Status",
-          "siid": 2,
-          "piid": 1,
-          "format": "bool",
-          "value": true
-        },
-        {
-          "id": "prop:3:1",
-          "kind": "property",
-          "name": "指示灯",
-          "description": "Switch Status",
-          "siid": 3,
-          "piid": 1,
-          "format": "bool",
-          "value": true
-        }
-      ],
-      "energy": {
-        "supported": true,
-        "source": "小米 MIoT",
-        "updatedAt": "2026-11-25T09:37:35.917443215+08:00"
-      },
-      "attributes": [
-        {
-          "key": "temperature",
-          "label": "温度",
-          "value": "33",
-          "unit": "°C"
-        },
-        {
-          "key": "indicator_light",
-          "label": "指示灯",
-          "value": "开启"
-        },
-        {
-          "key": "on",
-          "label": "开关状态",
-          "value": "开启"
-        }
-      ],
-      "value": "温度 33°C · 开关状态 开启",
-      "lastSeen": "2026-11-25T09:34:47.377212705+08:00",
+      "online": false,
+      "canControl": false,
+      "lastSeen": "2026-11-25T09:58:55.1579718+08:00",
       "demo": false,
-      "createdAt": "2026-11-25T08:57:30.563735393+08:00"
+      "createdAt": "2026-11-25T09:58:26.127248082+08:00"
     }
   ],
   "accounts": [
@@ -297,6 +252,66 @@
   ],
   "discovery": [],
   "logs": [
+    {
+      "id": "0d7b8678282b76aa",
+      "level": "success",
+      "message": "品牌账号同步完成：2 台设备",
+      "at": "2026-11-25T09:58:55.157980032+08:00"
+    },
+    {
+      "id": "919683c373b631ff",
+      "level": "warn",
+      "message": "[小米] 房间名称未匹配：1/2 台设备仍显示未分区（小冰箱）。gethome_merged/gethome 返回成功但未建立这些 DID 的房间关联；请确认米家 App 中已给设备分配房间。",
+      "at": "2026-11-25T09:58:55.156833941+08:00"
+    },
+    {
+      "id": "bfe990b7f3979615",
+      "level": "success",
+      "message": "品牌账号同步完成：2 台设备",
+      "at": "2026-11-25T09:58:26.295804535+08:00"
+    },
+    {
+      "id": "62630bc8f257ac57",
+      "level": "warn",
+      "message": "[小米] 房间名称未匹配：1/2 台设备仍显示未分区（小冰箱）。gethome_merged/gethome 返回成功但未建立这些 DID 的房间关联；请确认米家 App 中已给设备分配房间。",
+      "at": "2026-11-25T09:58:26.295330379+08:00"
+    },
+    {
+      "id": "9a2adb236fd256e0",
+      "level": "success",
+      "message": "品牌账号同步完成：2 台设备",
+      "at": "2026-11-25T09:51:20.175197284+08:00"
+    },
+    {
+      "id": "cca12e10a6afc783",
+      "level": "warn",
+      "message": "[小米] 房间名称未匹配：2/2 台设备仍显示未分区（插座测试、小冰箱）。gethome_merged/gethome 返回成功但未建立这些 DID 的房间关联；请确认米家 App 中已给设备分配房间。",
+      "at": "2026-11-25T09:51:20.17477514+08:00"
+    },
+    {
+      "id": "3da37b2f877e07ca",
+      "level": "success",
+      "message": "品牌账号同步完成：7 台设备",
+      "at": "2026-11-25T09:51:18.648989977+08:00"
+    },
+    {
+      "id": "20026f7f7e184ca9",
+      "level": "success",
+      "message": "[小米] 插座测试 开关已关闭",
+      "at": "2026-11-25T09:49:33.485305378+08:00"
+    },
+    {
+      "id": "7c30461534c92b86",
+      "level": "success",
+      "message": "品牌账号同步完成：2 台设备",
+      "at": "2026-11-25T09:49:06.978200657+08:00"
+    },
+    {
+      "id": "f820b44ae1319009",
+      "level": "warn",
+      "message": "[小米] 房间名称未匹配：2/2 台设备仍显示未分区（插座测试、小冰箱）。gethome_merged/gethome 返回成功但未建立这些 DID 的房间关联；请确认米家 App 中已给设备分配房间。",
+      "at": "2026-11-25T09:49:06.977550196+08:00"
+    },
     {
       "id": "be52475f8825e931",
       "level": "success",
@@ -664,6 +679,17 @@
       "at": "2026-11-24T22:24:02.298768228+08:00"
     }
   ],
+  "energyHistory": {
+    "ewelink-10022d8ca6": {
+      "days": {
+        "2026-11-25": 0.019499107798143005
+      },
+      "lastPowerW": 96.64,
+      "lastSample": "2026-11-25T10:01:33.419139279+08:00",
+      "lastIntegratedAt": "2026-11-25T10:01:33.419139279+08:00",
+      "lastMonthAt": "0001-01-01T00:00:00Z"
+    }
+  },
   "deletedDevices": {
     "018daea1d52978a8|ewelink-1000993d97": true,
     "018daea1d52978a8|ewelink-1000ceb267": true

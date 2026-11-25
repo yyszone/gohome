@@ -212,36 +212,90 @@ func xiaomiFetchDevicesForStateRefresh(ctx context.Context, s providerSecret) ([
 	return devices, err
 }
 
-// parseXiaomiHomeRoomNames mirrors the room enrichment used by hass-xiaomi-miot:
-// gethome_merged returns homelist[].roomlist[].dids and each room's name.
+// parseXiaomiHomeRoomNames mirrors Home Assistant's room enrichment logic.
+// Xiaomi returns the actual display names in homelist[].roomlist[].name and
+// the device IDs in roomlist[].dids. IDs may be strings or numbers depending
+// on the account/device generation, so they are normalized through stringValue.
 func parseXiaomiHomeRoomNames(body []byte) (map[string]string, error) {
-	var env struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Result  struct {
-			HomeList []struct {
-				RoomList []struct {
-					Name string   `json:"name"`
-					DIDs []string `json:"dids"`
-				} `json:"roomlist"`
-			} `json:"homelist"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(body, &env); err != nil {
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
 		return nil, fmt.Errorf("解析小米家庭房间列表失败：%w", err)
 	}
-	if env.Code != 0 {
-		return nil, fmt.Errorf("小米家庭房间接口错误 %d：%s", env.Code, env.Message)
+	if code := intValue(envelope["code"], 0); code != 0 {
+		message := firstNonEmpty(stringValue(envelope["message"]), "无详细信息")
+		return nil, fmt.Errorf("小米家庭房间接口错误 %d：%s", code, message)
 	}
+	result, _ := envelope["result"].(map[string]any)
+	if result == nil {
+		return nil, fmt.Errorf("小米家庭房间接口缺少 result：%s", firstNonEmpty(stringValue(envelope["message"]), "无详细信息"))
+	}
+
 	rooms := make(map[string]string)
-	for _, home := range env.Result.HomeList {
-		for _, room := range home.RoomList {
-			name := strings.TrimSpace(room.Name)
-			if name == "" {
+	addDIDs := func(dids any, name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		items, ok := dids.([]any)
+		if !ok {
+			return
+		}
+		for _, rawDID := range items {
+			if did := strings.TrimSpace(stringValue(rawDID)); did != "" {
+				rooms[did] = name
+			}
+		}
+	}
+	addHomeList := func(rawHomes any) {
+		homes, ok := rawHomes.([]any)
+		if !ok {
+			return
+		}
+		for _, rawHome := range homes {
+			home, ok := rawHome.(map[string]any)
+			if !ok {
 				continue
 			}
-			for _, did := range room.DIDs {
-				if did = strings.TrimSpace(did); did != "" {
+			// The official Xiaomi Home integration treats home-level DIDs
+			// as belonging to the home itself. Room-level DIDs below take
+			// precedence because they are more specific.
+			addDIDs(home["dids"], stringValue(home["name"]))
+			roomList, _ := home["roomlist"].([]any)
+			for _, rawRoom := range roomList {
+				room, ok := rawRoom.(map[string]any)
+				if !ok {
+					continue
+				}
+				addDIDs(room["dids"], stringValue(room["name"]))
+			}
+		}
+	}
+
+	// hass-xiaomi-miot builds result.devices[did] metadata from each room
+	// list. Accept that same pre-merged map as well, which also makes this
+	// parser compatible with Xiaomi responses that already include it.
+	if deviceMap, ok := result["devices"].(map[string]any); ok {
+		for did, rawDevice := range deviceMap {
+			if device, ok := rawDevice.(map[string]any); ok {
+				if name := strings.TrimSpace(stringValue(device["room_name"])); name != "" {
+					rooms[strings.TrimSpace(did)] = name
+				}
+			}
+		}
+	}
+	// The main and shared-home lists both carry roomlist[].dids. Processing
+	// both mirrors Home Assistant's account/home handling.
+	addHomeList(result["homelist"])
+	addHomeList(result["share_home_list"])
+
+	// Some firmware/API variants expose devices as a flat list rather than
+	// an object keyed by DID.
+	if deviceList, ok := result["device_info"].([]any); ok {
+		for _, rawDevice := range deviceList {
+			if device, ok := rawDevice.(map[string]any); ok {
+				did := strings.TrimSpace(stringValue(device["did"]))
+				name := strings.TrimSpace(stringValue(device["room_name"]))
+				if did != "" && name != "" {
 					rooms[did] = name
 				}
 			}
@@ -250,21 +304,222 @@ func parseXiaomiHomeRoomNames(body []byte) (map[string]string, error) {
 	return rooms, nil
 }
 
-func xiaomiFetchHomeRoomNames(ctx context.Context, secret providerSecret) (map[string]string, error) {
-	payload, err := json.Marshal(map[string]any{
-		"fg": true, "fetch_share": true, "fetch_share_dev": true,
-		"fetch_cariot": true, "limit": 300, "app_ver": 7, "plat_form": 0,
-	})
-	if err != nil {
-		return nil, err
+// xiaomiHomeRoomMeta retains the home/room IDs from gethome. The official
+// Xiaomi Home integration's overflow endpoint returns IDs and DID lists, but
+// may omit display names; the names must be joined back to this index.
+type xiaomiHomeRoomMeta struct {
+	Name  string
+	Rooms map[string]string
+}
+
+func parseXiaomiHomeRoomIndex(body []byte) (map[string]xiaomiHomeRoomMeta, error) {
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, fmt.Errorf("解析小米家庭索引失败：%w", err)
 	}
-	roomCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
-	defer cancel()
-	body, err := xiaomiEncryptedPost(roomCtx, secret, "/v2/homeroom/gethome_merged", payload)
-	if err != nil {
-		return nil, fmt.Errorf("读取小米家庭房间信息失败：%w", err)
+	if code := intValue(envelope["code"], 0); code != 0 {
+		return nil, fmt.Errorf("小米家庭索引接口错误 %d：%s", code, firstNonEmpty(stringValue(envelope["message"]), "无详细信息"))
 	}
-	return parseXiaomiHomeRoomNames(body)
+	result, _ := envelope["result"].(map[string]any)
+	if result == nil {
+		return nil, fmt.Errorf("小米家庭索引接口缺少 result：%s", firstNonEmpty(stringValue(envelope["message"]), "无详细信息"))
+	}
+
+	index := make(map[string]xiaomiHomeRoomMeta)
+	for _, source := range []string{"homelist", "share_home_list"} {
+		homes, _ := result[source].([]any)
+		for _, rawHome := range homes {
+			home, ok := rawHome.(map[string]any)
+			if !ok {
+				continue
+			}
+			homeID := strings.TrimSpace(stringValue(home["id"]))
+			if homeID == "" {
+				continue
+			}
+			meta := index[homeID]
+			meta.Name = strings.TrimSpace(stringValue(home["name"]))
+			if meta.Rooms == nil {
+				meta.Rooms = make(map[string]string)
+			}
+			rooms, _ := home["roomlist"].([]any)
+			for _, rawRoom := range rooms {
+				room, ok := rawRoom.(map[string]any)
+				if !ok {
+					continue
+				}
+				roomID := strings.TrimSpace(stringValue(room["id"]))
+				roomName := strings.TrimSpace(stringValue(room["name"]))
+				if roomID != "" && roomName != "" {
+					meta.Rooms[roomID] = roomName
+				}
+			}
+			index[homeID] = meta
+		}
+	}
+	return index, nil
+}
+
+// parseXiaomiRoomPage mirrors the official Xiaomi Home integration's
+// get_dev_room_page merge: page records contain home/room IDs and DIDs, while
+// display names come from the initial gethome room index.
+func parseXiaomiRoomPage(body []byte, homeIndex map[string]xiaomiHomeRoomMeta) (map[string]string, string, bool, error) {
+	var envelope map[string]any
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, "", false, fmt.Errorf("解析小米分页房间列表失败：%w", err)
+	}
+	if code := intValue(envelope["code"], 0); code != 0 {
+		return nil, "", false, fmt.Errorf("小米分页房间接口错误 %d：%s", code, firstNonEmpty(stringValue(envelope["message"]), "无详细信息"))
+	}
+	result, _ := envelope["result"].(map[string]any)
+	if result == nil {
+		return nil, "", false, fmt.Errorf("小米分页房间接口缺少 result：%s", firstNonEmpty(stringValue(envelope["message"]), "无详细信息"))
+	}
+
+	rooms := make(map[string]string)
+	infos, _ := result["info"].([]any)
+	for _, rawHome := range infos {
+		home, ok := rawHome.(map[string]any)
+		if !ok {
+			continue
+		}
+		homeID := strings.TrimSpace(stringValue(home["id"]))
+		meta := homeIndex[homeID]
+
+		// Devices listed directly under a home (rather than a room) are
+		// represented by the home name in the official Xiaomi Home model.
+		if meta.Name != "" {
+			if dids, ok := home["dids"].([]any); ok {
+				for _, rawDID := range dids {
+					if did := strings.TrimSpace(stringValue(rawDID)); did != "" {
+						rooms[did] = meta.Name
+					}
+				}
+			}
+		}
+
+		roomList, _ := home["roomlist"].([]any)
+		for _, rawRoom := range roomList {
+			room, ok := rawRoom.(map[string]any)
+			if !ok {
+				continue
+			}
+			roomID := strings.TrimSpace(stringValue(room["id"]))
+			roomName := firstNonEmpty(stringValue(room["name"]), meta.Rooms[roomID])
+			dids, _ := room["dids"].([]any)
+			for _, rawDID := range dids {
+				if did := strings.TrimSpace(stringValue(rawDID)); did != "" && roomName != "" {
+					rooms[did] = roomName
+				}
+			}
+		}
+	}
+	return rooms, strings.TrimSpace(stringValue(result["max_id"])), boolValue(result["has_more"]), nil
+}
+
+func countMatchedXiaomiRoomNames(roomNames map[string]string, dids []string) int {
+	count := 0
+	for _, did := range dids {
+		if strings.TrimSpace(roomNames[strings.TrimSpace(did)]) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func xiaomiRoomNamesCoverDevices(roomNames map[string]string, dids []string) bool {
+	if len(dids) == 0 {
+		return false
+	}
+	for _, did := range dids {
+		if strings.TrimSpace(roomNames[strings.TrimSpace(did)]) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeMissingXiaomiRoomNames(dst, src map[string]string) {
+	for did, name := range src {
+		if strings.TrimSpace(dst[did]) == "" && strings.TrimSpace(name) != "" {
+			dst[did] = name
+		}
+	}
+}
+
+func xiaomiFetchHomeRoomNames(ctx context.Context, secret providerSecret, requiredDIDs []string) (map[string]string, error) {
+	// First use the endpoint implemented by hass-xiaomi-miot. Give this
+	// metadata request more time than a small property read; it is only made
+	// during explicit account sync, never during the active-page state poll.
+	mergedPayload := []byte(`{"fg":true,"fetch_share":true,"fetch_share_dev":true,"fetch_cariot":true,"limit":300,"app_ver":7,"plat_form":0}`)
+	mergedCtx, cancelMerged := context.WithTimeout(ctx, 22*time.Second)
+	mergedBody, mergedErr := xiaomiEncryptedPostWithTimeout(mergedCtx, secret, "/v2/homeroom/gethome_merged", mergedPayload, 24*time.Second)
+	cancelMerged()
+	mergedNames := make(map[string]string)
+	if mergedErr == nil {
+		if names, parseErr := parseXiaomiHomeRoomNames(mergedBody); parseErr == nil {
+			mergeMissingXiaomiRoomNames(mergedNames, names)
+			if xiaomiRoomNamesCoverDevices(mergedNames, requiredDIDs) {
+				return mergedNames, nil
+			}
+			mergedErr = fmt.Errorf("gethome_merged 仅匹配到 %d/%d 台待补充分区设备", countMatchedXiaomiRoomNames(mergedNames, requiredDIDs), len(requiredDIDs))
+		} else {
+			mergedErr = parseErr
+		}
+	}
+
+	// Fallback to the pagination flow used by the official Xiaomi Home
+	// integration: gethome -> get_dev_room_page. Keep the first page's room
+	// names and use its home/room IDs to resolve names in subsequent pages.
+	getHomePayload := []byte(`{"limit":150,"fetch_share":true,"fetch_share_dev":true,"plat_form":0,"app_ver":9}`)
+	getHomeCtx, cancelGetHome := context.WithTimeout(ctx, 18*time.Second)
+	getHomeBody, getHomeErr := xiaomiEncryptedPostWithTimeout(getHomeCtx, secret, "/v2/homeroom/gethome", getHomePayload, 20*time.Second)
+	cancelGetHome()
+	if getHomeErr != nil {
+		return mergedNames, fmt.Errorf("读取小米家庭房间信息失败：gethome_merged：%v；gethome：%w", mergedErr, getHomeErr)
+	}
+	getHomeNames, parseErr := parseXiaomiHomeRoomNames(getHomeBody)
+	if parseErr != nil {
+		return mergedNames, fmt.Errorf("解析小米家庭房间信息失败：gethome_merged：%v；gethome：%w", mergedErr, parseErr)
+	}
+	mergeMissingXiaomiRoomNames(mergedNames, getHomeNames)
+	homeIndex, indexErr := parseXiaomiHomeRoomIndex(getHomeBody)
+	if indexErr != nil {
+		return mergedNames, fmt.Errorf("解析小米家庭/房间 ID 索引失败：%w", indexErr)
+	}
+
+	var pageEnvelope map[string]any
+	if err := json.Unmarshal(getHomeBody, &pageEnvelope); err != nil {
+		return mergedNames, nil
+	}
+	result, _ := pageEnvelope["result"].(map[string]any)
+	if result == nil || !boolValue(result["has_more"]) {
+		return mergedNames, nil // A valid empty mapping may mean no room is assigned.
+	}
+	startID := strings.TrimSpace(stringValue(result["max_id"]))
+	for page := 0; page < 8 && startID != ""; page++ {
+		pagePayload, _ := json.Marshal(map[string]any{"start_id": startID, "limit": 150})
+		pageCtx, cancelPage := context.WithTimeout(ctx, 15*time.Second)
+		pageBody, pageErr := xiaomiEncryptedPostWithTimeout(pageCtx, secret, "/v2/homeroom/get_dev_room_page", pagePayload, 17*time.Second)
+		cancelPage()
+		if pageErr != nil {
+			return mergedNames, fmt.Errorf("小米房间分页查询失败：%w", pageErr)
+		}
+		pageNames, nextID, hasMore, pageParseErr := parseXiaomiRoomPage(pageBody, homeIndex)
+		if pageParseErr != nil {
+			return mergedNames, pageParseErr
+		}
+		mergeMissingXiaomiRoomNames(mergedNames, pageNames)
+		if !hasMore || nextID == "" || nextID == startID {
+			startID = ""
+			break
+		}
+		startID = nextID
+	}
+	if startID != "" {
+		return mergedNames, errors.New("小米房间分页超过 8 页，已保留已取得的房间信息")
+	}
+	return mergedNames, nil
 }
 
 func xiaomiFetchDevicesWithOptions(ctx context.Context, s providerSecret, includeEnergyStats, onlineOnly bool) ([]Device, error) {
@@ -378,20 +633,25 @@ func xiaomiFetchDevicesWithOptions(ctx context.Context, s providerSecret, includ
 		return nil, fmt.Errorf("小米云端错误 %d: %s", envelope.Code, envelope.Message)
 	}
 	roomNames := map[string]string{}
+	roomIssue := ""
 	if !onlineOnly {
-		needsRooms := false
+		missingRoomDIDs := make([]string, 0, len(envelope.Result.List))
 		for _, item := range envelope.Result.List {
 			if strings.TrimSpace(item.RoomName) == "" {
-				needsRooms = true
-				break
+				missingRoomDIDs = append(missingRoomDIDs, item.DID)
 			}
 		}
-		if needsRooms {
+		if len(missingRoomDIDs) > 0 {
 			// Room metadata is fetched only during explicit account sync, not the
 			// active-page live state poll. A room lookup failure must not block
-			// device discovery or invalidate the saved Xiaomi login session.
-			if names, roomErr := xiaomiFetchHomeRoomNames(ctx, s); roomErr == nil {
+			// device discovery or invalidate the saved Xiaomi login session, but
+			// preserve the reason for the in-app sync log.
+			names, roomErr := xiaomiFetchHomeRoomNames(ctx, s, missingRoomDIDs)
+			if names != nil {
 				roomNames = names
+			}
+			if roomErr != nil {
+				roomIssue = sanitizeIntegrationLog(roomErr.Error())
 			}
 		}
 	}
@@ -403,7 +663,7 @@ func xiaomiFetchDevicesWithOptions(ctx context.Context, s providerSecret, includ
 		online := boolValue(x.Online)
 		cat := guessCategory(x.Name, x.Model)
 		room := firstNonEmpty(x.RoomName, roomNames[x.DID], "未分区")
-		out = append(out, Device{ID: "xiaomi-" + safeID(x.DID), RemoteID: x.DID, Name: firstNonEmpty(x.Name, x.Model, x.DID), Brand: "小米", Model: x.Model, Room: room, Category: cat, Protocol: "xiaomi-cloud", Online: online, LastSeen: time.Now(), Demo: false, CreatedAt: time.Now()})
+		out = append(out, Device{ID: "xiaomi-" + safeID(x.DID), RemoteID: x.DID, Name: firstNonEmpty(x.Name, x.Model, x.DID), Brand: "小米", Model: x.Model, Room: room, Category: cat, Protocol: "xiaomi-cloud", Online: online, LastSeen: time.Now(), Demo: false, CreatedAt: time.Now(), roomIssue: roomIssue})
 	}
 	// Read useful read-only MIoT properties for every supported device class.
 	// Unsupported models remain in the list with their online/offline state.
@@ -673,6 +933,10 @@ func miotReadEnergyRefs(spec miotSpecDocument) []miotEnergyRef {
 }
 
 func xiaomiEncryptedPost(ctx context.Context, s providerSecret, pathPart string, rawData []byte) ([]byte, error) {
+	return xiaomiEncryptedPostWithTimeout(ctx, s, pathPart, rawData, 18*time.Second)
+}
+
+func xiaomiEncryptedPostWithTimeout(ctx context.Context, s providerSecret, pathPart string, rawData []byte, timeout time.Duration) ([]byte, error) {
 	base := xiaomiAPIBase(s.Region)
 	nonce, nb, err := xiaomiGenerateNonce()
 	if err != nil {
@@ -714,14 +978,18 @@ func xiaomiEncryptedPost(ctx context.Context, s providerSecret, pathPart string,
 	req.Header.Set("MIOT-ENCRYPT-ALGORITHM", "ENCRYPT-RC4")
 	req.Header.Set("Accept-Encoding", "identity")
 	req.Header.Set("x-xiaomi-protocal-flag-cli", "PROTOCAL-HTTP2")
-	client := &http.Client{Jar: jar, Timeout: 18 * time.Second}
+	client := &http.Client{Jar: jar, Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	body, err := readBody(resp)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	_ = resp.Body.Close()
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, xiaomiAPIStatusError(resp, body, s, "")
 	}
 	decoded := bytes.TrimSpace(body)
 	if !json.Valid(decoded) {
