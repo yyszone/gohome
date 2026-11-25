@@ -13,7 +13,7 @@
       "online": true,
       "power": false,
       "canControl": true,
-      "lastSeen": "2026-11-25T09:56:34.603442045+08:00",
+      "lastSeen": "2026-11-25T11:02:51.190165479+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.275280153+08:00"
     },
@@ -61,14 +61,14 @@
         "powerW": 96.64,
         "voltageV": 230.28,
         "currentA": 0.55,
-        "todayKWh": 0.019499107798143005,
+        "todayKWh": 0.02145823701861483,
         "weekKWh": 0,
         "source": "eWeLink",
         "todaySource": "本机功率积分估算 · 从首次采集开始",
         "weekSource": "云端周统计仅部分型号提供；等待本机每日累计",
-        "updatedAt": "2026-11-25T10:01:33.419139279+08:00"
+        "updatedAt": "2026-11-25T11:04:04.17259063+08:00"
       },
-      "lastSeen": "2026-11-25T09:56:34.603442045+08:00",
+      "lastSeen": "2026-11-25T11:02:51.190165479+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.277178402+08:00"
     },
@@ -160,7 +160,7 @@
       "category": "插座",
       "protocol": "xiaomi-cloud",
       "online": true,
-      "power": false,
+      "power": true,
       "canControl": true,
       "controls": [
         {
@@ -171,7 +171,7 @@
           "siid": 2,
           "piid": 1,
           "format": "bool",
-          "value": false
+          "value": true
         },
         {
           "id": "prop:3:1",
@@ -187,13 +187,13 @@
       "energy": {
         "supported": true,
         "source": "小米 MIoT",
-        "updatedAt": "2026-11-25T10:01:33.506746939+08:00"
+        "updatedAt": "2026-11-25T11:04:04.275638365+08:00"
       },
       "attributes": [
         {
           "key": "temperature",
           "label": "温度",
-          "value": "35",
+          "value": "32",
           "unit": "°C"
         },
         {
@@ -204,11 +204,11 @@
         {
           "key": "on",
           "label": "开关状态",
-          "value": "关闭"
+          "value": "开启"
         }
       ],
-      "value": "温度 35°C · 开关状态 关闭",
-      "lastSeen": "2026-11-25T09:58:55.157964561+08:00",
+      "value": "温度 32°C · 开关状态 开启",
+      "lastSeen": "2026-11-25T11:03:15.282934431+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:27:08.251641356+08:00"
     },
@@ -252,6 +252,18 @@
   ],
   "discovery": [],
   "logs": [
+    {
+      "id": "a4389c11f81efb89",
+      "level": "success",
+      "message": "[小米] 小冰箱 开关已关闭",
+      "at": "2026-11-25T11:03:15.283602574+08:00"
+    },
+    {
+      "id": "19806971e971c63d",
+      "level": "success",
+      "message": "[小米] 小冰箱 开关已开启",
+      "at": "2026-11-25T11:03:12.163617798+08:00"
+    },
     {
       "id": "0d7b8678282b76aa",
       "level": "success",
@@ -682,11 +694,11 @@
   "energyHistory": {
     "ewelink-10022d8ca6": {
       "days": {
-        "2026-11-25": 0.019499107798143005
+        "2026-11-25": 0.02145823701861483
       },
       "lastPowerW": 96.64,
-      "lastSample": "2026-11-25T10:01:33.419139279+08:00",
-      "lastIntegratedAt": "2026-11-25T10:01:33.419139279+08:00",
+      "lastSample": "2026-11-25T11:04:04.17259063+08:00",
+      "lastIntegratedAt": "2026-11-25T11:04:04.17259063+08:00",
       "lastMonthAt": "0001-01-01T00:00:00Z"
     }
   },

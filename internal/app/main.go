@@ -14,12 +14,14 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	devicefeature "gohome/internal/features/devices"
@@ -34,7 +36,7 @@ var webFiles embed.FS
 // Build metadata is injected by Makefile from the current Git repository.
 // A source ZIP without .git metadata intentionally reports commit count 0.
 var (
-	version     = "0.2.25-source"
+	version     = "0.2.26-source"
 	buildDate   = "source"
 	commitCount = "0"
 	gitHash     = ""
@@ -1835,14 +1837,42 @@ func Run() {
 		addr = ":17880"
 	}
 	app := newApp(store)
-	statePollCtx, stopStatePoller := context.WithCancel(context.Background())
+
+	// systemd 在停止服务时发送 SIGTERM；本地前台运行时 Ctrl+C 也会走相同的清理流程。
+	rootCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	statePollCtx, stopStatePoller := context.WithCancel(rootCtx)
 	defer stopStatePoller()
 	go app.integrations.runProviderStatePoller(statePollCtx)
+
 	srv := &http.Server{Addr: addr, Handler: app, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("GoHome v%s 启动：%s", version, addr)
+	log.Printf("数据目录：%s", dataDir)
 	log.Printf("Web 登录已启用；登录 Cookie 持久保存在浏览器和 data/gohome.session.key 中")
 	log.Printf("安全提示：默认密码为固定初始密码，请仅在可信局域网使用，不要将管理端口直接暴露到公网")
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- srv.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("HTTP 服务退出：%v", err)
+		}
+	case <-rootCtx.Done():
+		log.Printf("收到关闭信号，正在停止 GoHome...")
+		stopStatePoller()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("HTTP 优雅关闭超时，强制关闭：%v", err)
+			_ = srv.Close()
+		}
+		if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("HTTP 服务关闭时发生错误：%v", err)
+		}
+		log.Printf("GoHome 已停止")
 	}
 }

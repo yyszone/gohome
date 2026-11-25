@@ -1,0 +1,35 @@
+[Unit]
+Description=GoHome Lightweight Home Automation
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=@GOHOME_DIR@
+Environment=GOHOME_ADDR=0.0.0.0:17880
+Environment=GOHOME_DATA_DIR=@GOHOME_DIR@/data
+ExecStart=@GOHOME_DIR@/scripts/service-start.sh
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=15s
+KillSignal=SIGTERM
+UMask=0077
+
+# 轻量守护：不设 CPU/内存硬限制，不额外启动常驻监控进程。
+# 程序空闲时状态轮询器本身会阻塞等待页面活动事件。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=@GOHOME_DIR@/data
+
+[Install]
+WantedBy=multi-user.target

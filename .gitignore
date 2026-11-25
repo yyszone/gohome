@@ -1,0 +1,24 @@
+# Runtime data and credentials
+/data/*
+!/data/.gitkeep
+*.vault.key
+*.vault.json
+*.session.key
+.env
+.env.*
+
+# Build outputs
+/build/
+/dist/
+/gohome
+*.exe
+*.test
+coverage.out
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

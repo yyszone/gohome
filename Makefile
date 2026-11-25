@@ -18,9 +18,9 @@ endif
 VERSION := $(VERSION_PREFIX).$(COMMIT_COUNT)
 LDFLAGS := -s -w -X 'gohome/internal/app.version=$(VERSION)' -X 'gohome/internal/app.buildDate=$(BUILD_DATE)' -X 'gohome/internal/app.commitCount=$(COMMIT_COUNT)' -X 'gohome/internal/app.gitHash=$(GIT_HASH)' -X 'gohome/internal/app.gitMessage=$(GIT_MESSAGE)'
 
-.PHONY: all build run dev test vet check release linux windows clean help
+.PHONY: all build run dev test vet check release linux linux-arm32 linux-armv7 linux-arm64 windows armbian clean help
 
-# 默认 make：先执行测试和静态检查，再一次生成 Linux / Windows amd64。
+# 默认 make：先执行测试和静态检查，再生成 Linux amd64 / ARMv7 / ARM64 与 Windows amd64。
 all: release
 
 build:
@@ -41,11 +41,30 @@ vet:
 
 check: test vet
 
-release: check linux windows
+release: check linux linux-arm32 linux-arm64 windows
 
 linux:
 	@mkdir -p $(DIST_DIR)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(APP_NAME)-linux-amd64 $(MAIN_PKG)
+
+# 32 位 ARM Linux（Armbian 常见 armhf / ARMv7）。
+# 如确实使用 ARMv6，可以通过 ARM32_GOARM=6 覆盖，但默认面向 ARMv7。
+ARM32_GOARM ?= 7
+
+linux-arm32:
+	@mkdir -p $(DIST_DIR)
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=$(ARM32_GOARM) $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(APP_NAME)-linux-armv7 $(MAIN_PKG)
+
+# 64 位 ARM Linux（Armbian aarch64）。
+linux-arm64:
+	@mkdir -p $(DIST_DIR)
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/$(APP_NAME)-linux-arm64 $(MAIN_PKG)
+
+# 兼容更直观的目标名。
+linux-armv7: linux-arm32
+
+# 仅构建两种 Armbian ARM 架构（仍执行测试和静态检查）。
+armbian: check linux-arm32 linux-arm64
 
 windows:
 	@mkdir -p $(DIST_DIR)
@@ -55,4 +74,4 @@ clean:
 	rm -rf $(BUILD_DIR) $(DIST_DIR)
 
 help:
-	@printf '%s\n' 'make          测试并同时编译 Linux/Windows x64' 'make build    编译当前平台到 build/' 'make run      编译并运行当前平台' 'make dev      go run 开发模式' 'make test     运行单元测试' 'make vet      Go 静态检查' 'make release  测试并交叉编译 Linux/Windows x64' 'make linux    只编译 Linux x64' 'make windows  只编译 Windows x64' 'make clean    删除构建产物' 'make help     显示帮助'
+	@printf '%s\n' 'make                 测试并编译 Linux x64/ARMv7/ARM64 + Windows x64' 'make build           编译当前平台到 build/' 'make run             编译并运行当前平台' 'make dev             go run 开发模式' 'make test            运行单元测试' 'make vet             Go 静态检查' 'make release         测试并交叉编译全部发布目标' 'make linux           只编译 Linux x64' 'make linux-arm32     编译 Linux ARMv7 32 位' 'make linux-arm64     编译 Linux ARM64 64 位' 'make armbian         测试并编译 Armbian ARM32 + ARM64' 'make windows         只编译 Windows x64' 'make clean           删除构建产物' 'make help            显示帮助'

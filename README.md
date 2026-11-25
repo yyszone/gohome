@@ -1,4 +1,13 @@
-# GoHome v0.2.25
+# GoHome v0.2.26
+
+## v0.2.26 Armbian ARM32/ARM64 编译与 systemd 守护
+
+- Makefile 新增 Linux ARMv7 32 位和 ARM64 64 位交叉编译，默认 `make` 会一起生成 Linux amd64、ARMv7、ARM64 和 Windows amd64。
+- 新增 `make armbian`，只编译魔百盒 / Armbian 常用的 ARMv7 与 ARM64 两种目标。
+- 新增 systemd 服务模板和安装脚本：开机启动、异常退出自动重启、日志进入 journal，按 `uname -m` 自动选择对应二进制。
+- 服务固定使用项目根目录作为工作目录，并将 `GOHOME_DATA_DIR` 指向项目根目录的 `data/`，二进制放在 `/root/gohome/` 时，数据会保存在 `/root/gohome/data/`。
+- GoHome 收到 systemd 的 SIGTERM 或终端 Ctrl+C 时会停止状态轮询并优雅关闭 HTTP 服务。
+- 服务不设置 CPU/内存硬限制，不额外启动常驻监控进程；无活动设备页面时，状态调度器仍按现有事件驱动逻辑休眠。
 
 ## v0.2.25 小米房间同步兼容 HA、补齐设备操作日志
 
@@ -234,8 +243,9 @@ GoHome 是一个轻量级 Go 家庭设备管理服务，单进程运行，静态
 │       ├── storage/             # 原子文件操作
 │       ├── discovery/           # mDNS 发现
 │       └── logging/             # 敏感日志脱敏
-├── scripts/                     # Linux / Windows 启动脚本
-├── Makefile                     # 默认双平台编译
+├── scripts/                     # 启动、systemd 安装脚本
+├── deploy/systemd/               # systemd 服务模板
+├── Makefile                     # Linux amd64/ARMv7/ARM64 + Windows amd64
 ├── go.mod
 ├── README.md
 └── THIRD_PARTY_NOTICES.md
@@ -247,11 +257,11 @@ GoHome 是一个轻量级 Go 家庭设备管理服务，单进程运行，静态
 
 - Go 1.23 或更高版本
 - GNU Make（Windows 可通过 MSYS2 / Git Bash 等提供 make；也可以直接运行 `go build`）
-- Linux NAS 推荐在 NAS 本机编译，避免 CGO 或 CPU 架构不匹配
+- 推荐在开发机交叉编译目标架构；发布目标均使用 `CGO_ENABLED=0`，无需在性能较弱的 Armbian 盒子上安装 Go
 
 ## 编译
 
-### 默认：一次编译 Linux + Windows
+### 默认：编译常用发布平台
 
 ```bash
 make
@@ -262,7 +272,9 @@ make
 1. `go test ./...`
 2. `go vet ./...`
 3. 编译 Linux amd64
-4. 编译 Windows amd64
+4. 编译 Linux ARMv7 32 位
+5. 编译 Linux ARM64 64 位
+6. 编译 Windows amd64
 
 版本从当前 Git 仓库读取：`VERSION_PREFIX` 默认是 `0.2`，版本后缀为 `git rev-list --count HEAD`。每新增一个 Git commit，下一次 make 的版本号会递增；仅重复执行 make 不会递增提交数。最近一次提交的短哈希和 subject 会显示在页面底部版本号的悬浮提示中。
 
@@ -272,22 +284,29 @@ make
 
 ```text
 dist/gohome-linux-amd64
+dist/gohome-linux-armv7
+dist/gohome-linux-arm64
 dist/gohome-windows-amd64.exe
 ```
 
-### 其他命令
+### 其他编译命令
 
 ```bash
-make build     # 编译当前操作系统架构到 build/
-make run       # 编译并运行当前平台
-make dev       # go run ./cmd/gohome
-make test      # 单元测试
-make vet       # 静态检查
-make release   # 与默认 make 相同，测试后编译两个平台
-make linux     # 只编译 Linux amd64
-make windows   # 只编译 Windows amd64
-make clean     # 删除 build/ 和 dist/
+make build       # 编译当前平台到 build/
+make run         # 编译并运行当前平台
+make dev         # go run ./cmd/gohome
+make test        # 单元测试
+make vet         # 静态检查
+make release     # 与默认 make 相同，测试后编译全部发布目标
+make linux       # 只编译 Linux amd64
+make linux-arm32 # 只编译 Linux ARMv7 32 位（GOARM=7）
+make linux-arm64 # 只编译 Linux ARM64 64 位
+make armbian     # 执行测试和静态检查，只编译 Armbian ARMv7 + ARM64
+make windows     # 只编译 Windows amd64
+make clean       # 删除 build/ 和 dist/
 ```
+
+注意：`gohome-linux-armv7` 适用于 32 位 ARMv7 用户空间，`gohome-linux-arm64` 适用于 64 位 AArch64 用户空间。不要仅凭 CPU 型号判断系统位数，部署前在盒子上执行 `uname -m`；`aarch64` 选 ARM64，`armv7l` 选 ARMv7。极老的 ARMv6 系统不属于默认 ARMv7 目标。
 
 ## 运行
 
@@ -307,7 +326,137 @@ $env:GOHOME_ADDR = "0.0.0.0:17880"
 
 浏览器访问 `http://NAS_IP:17880`。首次会显示 GoHome 登录页，默认账号 `admin`、密码 `123456`。登录成功后浏览器会保存长期 Cookie；以后访问自动保持登录，不需要重复输入密码。
 
-也可以使用 `scripts/start-linux.sh` 或 `scripts/start-windows.bat` 从项目目录启动。
+也可以使用 `scripts/start-linux.sh` 或 `scripts/start-windows.bat` 从项目目录启动。手动运行 Linux 二进制时请先 `cd` 到项目根目录，或设置绝对路径 `GOHOME_DATA_DIR`；Armbian 的 systemd 服务已自动固定为 `/root/gohome/data`。
+
+## 魔百盒 / Armbian 部署（ARM32 / ARM64）
+
+建议在电脑或已有 NAS 上交叉编译，再把二进制复制到魔百盒；不需要在性能较弱的盒子上安装 Go，也不需要 Docker。
+
+### 1. 确认 Armbian 架构
+
+在魔百盒执行：
+
+```bash
+uname -m
+getconf LONG_BIT
+```
+
+- `aarch64` 且 `64`：使用 `gohome-linux-arm64`。
+- `aarch64` 但 `32`（64 位内核 + 32 位用户空间）：使用 `gohome-linux-armv7`。
+- `armv7l` 且 `32`：使用 `gohome-linux-armv7`。
+- `armv6l`：默认 ARMv7 包不适用，需要单独按 ARMv6 编译。
+
+### 2. 交叉编译
+
+在有 Go 1.23+ 和 GNU Make 的开发机进入项目目录：
+
+```bash
+make armbian
+```
+
+产物在 `dist/`：
+
+```text
+dist/gohome-linux-armv7
+dist/gohome-linux-arm64
+```
+
+### 3. 放到魔百盒 `/root/gohome`
+
+把源码 ZIP 直接解压到魔百盒 `/root/gohome`，再把对应架构的二进制也放到这个目录。假设 ZIP 已上传到 `/root/GoHome-v0.2.26.zip`：
+
+```bash
+mkdir -p /root/gohome
+unzip -oq /root/GoHome-v0.2.26.zip -d /root/gohome
+# 如果使用单独提供的 ARM 预编译包，也解压到相同目录：
+unzip -oq /root/GoHome-v0.2.26-Armbian-binaries.zip -d /root/gohome
+```
+
+解压后，`Makefile`、`scripts/`、`deploy/` 以及对应的 `gohome-linux-armv7` / `gohome-linux-arm64` 二进制应直接位于 `/root/gohome`，不要多出一层 `GoHome-v0.2.26/` 子目录。目录大致如下：
+
+```text
+/root/gohome/
+├── gohome-linux-armv7       # 32 位系统使用
+├── gohome-linux-arm64       # 64 位系统使用
+├── scripts/
+│   ├── service-start.sh
+│   └── install-systemd.sh
+├── deploy/systemd/gohome.service
+└── data/                    # 首次启动自动创建
+```
+
+如果二进制来自开发机的 `dist/`，例如在开发机执行：
+
+```bash
+scp dist/gohome-linux-arm64 root@ARMBIAN_IP:/root/gohome/
+scp dist/gohome-linux-armv7 root@ARMBIAN_IP:/root/gohome/
+```
+
+只需复制与你的 Armbian 用户空间匹配的那个二进制；也可以两个都复制，服务启动脚本会结合 `uname -m` 和 `getconf LONG_BIT` 自动选择，兼容 64 位内核运行 32 位用户空间。源码目录中的 `scripts/` 和 `deploy/` 也必须保留。
+
+### 4. 安装开机启动和守护服务
+
+在魔百盒执行：
+
+```bash
+cd /root/gohome
+chmod +x scripts/service-start.sh scripts/install-systemd.sh
+bash scripts/install-systemd.sh
+```
+
+安装脚本会生成 `/etc/systemd/system/gohome.service`，并启用和启动服务。服务行为：
+
+- 开机后在网络就绪时自动启动；
+- GoHome 异常退出后 3 秒自动重启；
+- 收到 SIGTERM 时先停止状态轮询，再给 HTTP 请求最多 10 秒优雅退出；
+- 日志交给 systemd journal，不在项目目录不断生成大日志文件；
+- 工作目录固定为 `/root/gohome`，数据目录固定为 `/root/gohome/data`；
+- 不设置 CPU/内存硬限制，不额外运行常驻监控进程。启动脚本 `exec` 真正的 Go 二进制，运行后不会保留 shell 父进程。
+
+### 5. 查看状态与日志
+
+```bash
+systemctl status gohome --no-pager
+journalctl -u gohome -n 100 --no-pager
+journalctl -u gohome -f
+```
+
+常用管理命令：
+
+```bash
+systemctl restart gohome       # 重启
+systemctl stop gohome          # 停止
+systemctl start gohome         # 启动
+systemctl disable --now gohome # 取消开机启动并停止
+```
+
+浏览器访问 `http://魔百盒IP:17880`。默认监听 `0.0.0.0:17880`，请只在可信家庭局域网开放，不要将端口直接映射到公网。
+
+### 6. 数据目录与更新
+
+即使程序文件在 `/root/gohome`，所有运行数据也集中在：
+
+```text
+/root/gohome/data/
+├── gohome.json
+├── gohome.vault.json
+├── gohome.vault.key
+└── gohome.session.key
+```
+
+systemd 服务显式设置 `GOHOME_DATA_DIR=/root/gohome/data`，不依赖从哪个终端目录启动。更新二进制时先备份数据，再停止服务、替换二进制并启动：
+
+```bash
+cd /root/gohome
+cp -a data "data.backup-$(date +%Y%m%d-%H%M%S)"
+systemctl stop gohome
+# 将新版本对应架构的二进制复制到这里，并保留文件名
+chmod 0755 gohome-linux-arm64  # 64 位系统；32 位则改为 gohome-linux-armv7
+systemctl start gohome
+journalctl -u gohome -n 50 --no-pager
+```
+
+**不要删除或覆盖 `data/`。** 更换二进制不需要重新登录小米或 eWeLink；Vault 和 Session 密钥必须与原数据一起保留。
 
 ## 数据与登录状态
 
