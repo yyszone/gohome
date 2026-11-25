@@ -13,7 +13,7 @@
       "online": true,
       "power": false,
       "canControl": true,
-      "lastSeen": "2026-11-25T07:43:13.524935725+08:00",
+      "lastSeen": "2026-11-25T09:11:42.667513631+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.275280153+08:00"
     },
@@ -64,7 +64,7 @@
         "source": "eWeLink",
         "todaySource": "云端未返回日累计；等待有效功率或月累计采样",
         "weekSource": "云端周统计仅部分型号提供；等待本机每日累计",
-        "updatedAt": "2026-11-25T07:44:02.855365018+08:00"
+        "updatedAt": "2026-11-25T09:12:51.738908796+08:00"
       },
       "lastSeen": "2026-11-24T22:24:40.280599446+08:00",
       "demo": false,
@@ -131,23 +131,6 @@
       "createdAt": "2026-11-24T22:24:40.278823164+08:00"
     },
     {
-      "id": "ewelink-1000ceb267",
-      "accountId": "018daea1d52978a8",
-      "remoteId": "1000ceb267",
-      "name": "我的设备带遥控器的",
-      "brand": "嵩诺",
-      "model": "SA-018",
-      "room": "未分区",
-      "category": "其他",
-      "protocol": "ewelink-cloud",
-      "online": false,
-      "power": true,
-      "canControl": true,
-      "lastSeen": "2026-11-24T22:24:40.280601251+08:00",
-      "demo": false,
-      "createdAt": "2026-11-24T22:24:40.279512211+08:00"
-    },
-    {
       "id": "ewelink-100087ec97",
       "accountId": "018daea1d52978a8",
       "remoteId": "100087ec97",
@@ -165,27 +148,73 @@
       "createdAt": "2026-11-24T22:24:40.280064472+08:00"
     },
     {
-      "id": "ewelink-1000993d97",
-      "accountId": "018daea1d52978a8",
-      "remoteId": "1000993d97",
-      "name": "电脑",
-      "brand": "明日电子",
-      "model": "MR-KJ103",
-      "room": "未分区",
-      "category": "其他",
-      "protocol": "ewelink-cloud",
-      "online": false,
-      "power": false,
-      "canControl": true,
-      "lastSeen": "2026-11-24T22:24:40.280603041+08:00",
-      "demo": false,
-      "createdAt": "2026-11-24T22:24:40.280334524+08:00"
-    },
-    {
       "id": "xiaomi-234301087",
       "accountId": "a04e929e7567fb21",
       "remoteId": "234301087",
       "name": "小冰箱",
+      "brand": "小米",
+      "model": "chuangmi.plug.m3",
+      "room": "未分区",
+      "category": "插座",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "power": false,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:3:1",
+          "kind": "property",
+          "name": "指示灯",
+          "description": "Switch Status",
+          "siid": 3,
+          "piid": 1,
+          "format": "bool",
+          "value": true
+        }
+      ],
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-25T09:12:51.855896144+08:00"
+      },
+      "attributes": [
+        {
+          "key": "temperature",
+          "label": "温度",
+          "value": "36",
+          "unit": "°C"
+        },
+        {
+          "key": "indicator_light",
+          "label": "指示灯",
+          "value": "开启"
+        },
+        {
+          "key": "on",
+          "label": "开关状态",
+          "value": "关闭"
+        }
+      ],
+      "value": "温度 36°C · 开关状态 关闭",
+      "lastSeen": "2026-11-25T09:11:59.510797339+08:00",
+      "demo": false,
+      "createdAt": "2026-11-24T22:27:08.251641356+08:00"
+    },
+    {
+      "id": "xiaomi-128781403",
+      "accountId": "a04e929e7567fb21",
+      "remoteId": "128781403",
+      "name": "插座测试",
       "brand": "小米",
       "model": "chuangmi.plug.m3",
       "room": "未分区",
@@ -203,12 +232,12 @@
           "siid": 2,
           "piid": 1,
           "format": "bool",
-          "value": false
+          "value": true
         },
         {
           "id": "prop:3:1",
           "kind": "property",
-          "name": "电源开关",
+          "name": "指示灯",
           "description": "Switch Status",
           "siid": 3,
           "piid": 1,
@@ -219,19 +248,19 @@
       "energy": {
         "supported": true,
         "source": "小米 MIoT",
-        "updatedAt": "2026-11-25T07:44:02.937768962+08:00"
+        "updatedAt": "2026-11-25T09:12:51.934238558+08:00"
       },
       "attributes": [
         {
-          "key": "on",
-          "label": "开关状态",
-          "value": "关闭"
-        },
-        {
           "key": "temperature",
           "label": "温度",
-          "value": "28",
+          "value": "36",
           "unit": "°C"
+        },
+        {
+          "key": "indicator_light",
+          "label": "指示灯",
+          "value": "开启"
         },
         {
           "key": "on",
@@ -239,10 +268,10 @@
           "value": "开启"
         }
       ],
-      "value": "开关状态 关闭 · 温度 28°C",
-      "lastSeen": "2026-11-25T07:43:32.099123376+08:00",
+      "value": "温度 36°C · 开关状态 开启",
+      "lastSeen": "2026-11-25T09:12:09.330419843+08:00",
       "demo": false,
-      "createdAt": "2026-11-24T22:27:08.251641356+08:00"
+      "createdAt": "2026-11-25T08:57:30.563735393+08:00"
     }
   ],
   "accounts": [
@@ -261,12 +290,216 @@
       "label": "17703965346",
       "region": "cn",
       "status": "connected",
-      "note": "已授权 · 已同步 1 台设备",
+      "note": "已授权 · 已同步 2 台设备",
       "createdAt": "2026-11-24T22:27:08.11871396+08:00"
     }
   ],
   "discovery": [],
   "logs": [
+    {
+      "id": "a1a14a94d9415953",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T08:59:08.92356287+08:00"
+    },
+    {
+      "id": "840bea41843c48d7",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T08:58:59.308437518+08:00"
+    },
+    {
+      "id": "1d2624fb6e9567d6",
+      "level": "success",
+      "message": "品牌账号同步完成：2 台设备",
+      "at": "2026-11-25T08:57:30.742772538+08:00"
+    },
+    {
+      "id": "6a4c69225d48ab7f",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T08:45:30.361261551+08:00"
+    },
+    {
+      "id": "a9ed2e87652cd800",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T08:45:28.986198643+08:00"
+    },
+    {
+      "id": "6f9bebd268c50cea",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T08:43:49.30507825+08:00"
+    },
+    {
+      "id": "3bfcf5540c5a127a",
+      "level": "success",
+      "message": "[小米] 小冰箱 属性已更新（SIID=3 PIID=1）",
+      "at": "2026-11-25T08:43:47.209600965+08:00"
+    },
+    {
+      "id": "77e2b206c4352ce5",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T08:43:47.209171554+08:00"
+    },
+    {
+      "id": "5b6ae3eff225422f",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T08:43:34.562656807+08:00"
+    },
+    {
+      "id": "273d099bd8ce875f",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T08:43:07.745925339+08:00"
+    },
+    {
+      "id": "71d397323d92e1e1",
+      "level": "warn",
+      "message": "[易微联 / eWeLink] 后台状态同步失败：eWeLink 云端状态读取失败：请求 eWeLink 设备清单失败: Get \"https://cn-apia.coolkit.cn/v2/device/thing?lang=cn\u0026num=0\": context canceled",
+      "at": "2026-11-25T08:23:00.797511724+08:00"
+    },
+    {
+      "id": "157c37db2a05f276",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T08:13:40.332942396+08:00"
+    },
+    {
+      "id": "2cf1122459c422a1",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T08:12:28.338248828+08:00"
+    },
+    {
+      "id": "b28740820eed10bc",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T08:12:00.835442145+08:00"
+    },
+    {
+      "id": "9073503a57d5fae2",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：小米云端状态读取失败：请求小米设备列表失败: Post \"https://api.io.mi.com/app/home/device_list\": context canceled",
+      "at": "2026-11-25T08:11:07.40417647+08:00"
+    },
+    {
+      "id": "42ae745379ec736b",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T08:01:56.694896702+08:00"
+    },
+    {
+      "id": "5287d062e1af23c3",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T08:01:50.278407142+08:00"
+    },
+    {
+      "id": "36f9b2728ae05ac7",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T08:01:42.9592477+08:00"
+    },
+    {
+      "id": "7f55cca5c7c55df1",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T07:59:37.210994571+08:00"
+    },
+    {
+      "id": "fab843740ef0079b",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:59:16.742289085+08:00"
+    },
+    {
+      "id": "5c1cde0b1e1eb81f",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:59:15.190617576+08:00"
+    },
+    {
+      "id": "beeb902334d08270",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:59:14.443546418+08:00"
+    },
+    {
+      "id": "d5663ede68f46474",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:59:07.008221363+08:00"
+    },
+    {
+      "id": "edb213e2be85d0f1",
+      "level": "warn",
+      "message": "[小米] 账号登录/设备同步：小米已经成功识别验证渠道（短信），但验证码发送阶段被小米拒绝（70022）。如果其他手机号可以收到验证码，说明短信服务并非完全不可用；当前绑定安全手机号的 24 小时发送额度、号码风控、运营商路由或短信退订拦截更值得排查。小米官方说明同一手机号 24 小时内短信验证码通常最多 5 次（中国大陆）或 3 次（其他国家/地区）；达到上限后需等待 24 小时。请勿连续重发；如当前账号同时提供邮箱验证，可在本次会话中切换邮箱。70022 本身没有公开的唯一错误码释义，不能仅凭它断定一定是超频。",
+      "at": "2026-11-25T07:58:49.289737158+08:00"
+    },
+    {
+      "id": "8c7673cc2dec9fb1",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:58:16.402238896+08:00"
+    },
+    {
+      "id": "5703d0ea82505e0b",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:58:15.386350521+08:00"
+    },
+    {
+      "id": "e325d034fde087f1",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:58:14.227224099+08:00"
+    },
+    {
+      "id": "9fd79899f957e277",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：MIoT 实时属性未全部读取：小冰箱(chuangmi.plug.m3): context canceled",
+      "at": "2026-11-25T07:58:01.019553505+08:00"
+    },
+    {
+      "id": "b695c1c453e66310",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:49:15.081229696+08:00"
+    },
+    {
+      "id": "bfe7f8437825479c",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:49:13.12075985+08:00"
+    },
+    {
+      "id": "a2d0e2d14e36c637",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:49:11.161177701+08:00"
+    },
+    {
+      "id": "3462cf3e5169a8b1",
+      "level": "info",
+      "message": "设备已更新：小冰箱",
+      "at": "2026-11-25T07:49:10.071955692+08:00"
+    },
+    {
+      "id": "afe363a2f082bc6a",
+      "level": "info",
+      "message": "已删除设备：我的设备带遥控器的（普通同步不会恢复；重新登录账号后可重新同步）",
+      "at": "2026-11-25T07:48:27.711665963+08:00"
+    },
+    {
+      "id": "b4e50bce2b16f5c2",
+      "level": "info",
+      "message": "已删除设备：电脑（普通同步不会恢复；重新登录账号后可重新同步）",
+      "at": "2026-11-25T07:48:18.008614583+08:00"
+    },
     {
       "id": "9411dee75de984c6",
       "level": "info",
@@ -406,5 +639,9 @@
       "at": "2026-11-24T22:24:02.298768228+08:00"
     }
   ],
+  "deletedDevices": {
+    "018daea1d52978a8|ewelink-1000993d97": true,
+    "018daea1d52978a8|ewelink-1000ceb267": true
+  },
   "firstRunAt": "2026-11-24T22:24:02.298724426+08:00"
 }

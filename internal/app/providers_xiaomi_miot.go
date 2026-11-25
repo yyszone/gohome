@@ -198,7 +198,18 @@ func xiaomiFetchDevices(ctx context.Context, s providerSecret) ([]Device, error)
 // It is used by the background state poller; interactive/manual sync still
 // uses xiaomiFetchDevices and includes the historical energy lookup.
 func xiaomiFetchDevicesForStateRefresh(ctx context.Context, s providerSecret) ([]Device, error) {
-	return xiaomiFetchDevicesWithOptions(ctx, s, false, true)
+	devices, err := xiaomiFetchDevicesWithOptions(ctx, s, false, true)
+	// A transport can occasionally return context.Canceled even though the
+	// poll's parent context is still alive (for example, a stale pooled
+	// connection being torn down). Retry exactly once with a fresh bounded
+	// context. A page lease release no longer cancels this in-flight context;
+	// an actual application shutdown still does.
+	if errors.Is(err, context.Canceled) && ctx.Err() == nil {
+		retryCtx, cancel := context.WithTimeout(ctx, 40*time.Second)
+		defer cancel()
+		return xiaomiFetchDevicesWithOptions(retryCtx, s, false, true)
+	}
+	return devices, err
 }
 
 func xiaomiFetchDevicesWithOptions(ctx context.Context, s providerSecret, includeEnergyStats, onlineOnly bool) ([]Device, error) {
@@ -377,12 +388,27 @@ var miotSpecCache = struct {
 	specs   map[string]miotSpecDocument
 }{models: map[string]string{}, specs: map[string]miotSpecDocument{}}
 
+// lookupMIoTModelType tolerates model identifiers whose letter casing differs
+// from the specification index, while preserving an exact-match fast path.
+func lookupMIoTModelType(models map[string]string, model string) string {
+	model = strings.TrimSpace(model)
+	if typ := models[model]; typ != "" {
+		return typ
+	}
+	for candidate, typ := range models {
+		if strings.EqualFold(strings.TrimSpace(candidate), model) {
+			return typ
+		}
+	}
+	return ""
+}
+
 func fetchMIoTModelType(ctx context.Context, model string) (string, error) {
 	model = strings.TrimSpace(model)
 	miotSpecCache.Lock()
 	indexFresh := !miotSpecCache.indexAt.IsZero() && time.Since(miotSpecCache.indexAt) < 24*time.Hour
 	if indexFresh {
-		typ := miotSpecCache.models[model]
+		typ := lookupMIoTModelType(miotSpecCache.models, model)
 		miotSpecCache.Unlock()
 		if typ == "" {
 			return "", fmt.Errorf("MIoT 规格库未收录型号 %s", model)
@@ -418,7 +444,7 @@ func fetchMIoTModelType(ctx context.Context, model string) (string, error) {
 	miotSpecCache.Lock()
 	miotSpecCache.models = models
 	miotSpecCache.indexAt = time.Now()
-	typ := models[model]
+	typ := lookupMIoTModelType(models, model)
 	miotSpecCache.Unlock()
 	if typ == "" {
 		return "", fmt.Errorf("MIoT 规格库未收录型号 %s", model)
@@ -687,15 +713,18 @@ func applyMIoTEnergyResult(e *EnergyMetrics, refs []miotEnergyRef, body []byte) 
 }
 
 type miotDevicePropertyRef struct {
-	SIID        int
-	PIID        int
-	Field       string
-	Label       string
-	Unit        string
-	Scale       float64
-	Format      string
-	ControlOnly bool
-	ValueList   []struct {
+	SIID               int
+	PIID               int
+	ServiceName        string
+	ServiceDescription string
+	ServiceType        string
+	Field              string
+	Label              string
+	Unit               string
+	Scale              float64
+	Format             string
+	ControlOnly        bool
+	ValueList          []struct {
 		Value       any    `json:"value"`
 		Description string `json:"description"`
 	}
@@ -725,6 +754,34 @@ func miotPowerStateName(normalized string) bool {
 	default:
 		return false
 	}
+}
+
+// miotIndicatorService distinguishes indicator/LED switches from the actual
+// appliance relay. Some MIoT devices expose both as a boolean property named
+// "on". Treating both as Device.Power lets the later LED result overwrite the
+// real outlet state (for example chuangmi.plug.m3: switch.on is SIID 2/PIID 1,
+// indicator-light.on is SIID 3/PIID 1).
+func miotIndicatorService(name, description, serviceType string) bool {
+	text := miotNormalizedName(strings.Join([]string{name, description, serviceType}, " "))
+	for _, marker := range []string{"indicator", "indicatorlight", "statuslight", "led", "pilotlamp", "指示灯", "状态灯"} {
+		if strings.Contains(text, miotNormalizedName(marker)) {
+			return true
+		}
+	}
+	return false
+}
+
+func miotStatePropertyField(serviceName, serviceDescription, serviceType, propertyName, propertyDescription, propertyType string) string {
+	name := miotNormalizedName(propertyName)
+	description := strings.ToLower(strings.TrimSpace(propertyDescription))
+	propType := strings.ToLower(strings.TrimSpace(propertyType))
+	if miotIndicatorService(serviceName, serviceDescription, serviceType) && miotPowerStateName(name) {
+		return "indicator_light"
+	}
+	if miotPowerStateName(name) || strings.Contains(propType, ":property:on:") || strings.Contains(propType, ":property:switch:") || strings.Contains(propType, ":property:power:") || strings.Contains(description, "开关状态") || strings.Contains(description, "电源开关") || strings.Contains(description, "继电器状态") {
+		return "on"
+	}
+	return ""
 }
 
 func miotBoolValue(raw any) (bool, bool) {
@@ -796,6 +853,9 @@ func miotDisplayProperty(name, description, serviceName, unit string) (field, la
 	}
 	if strings.EqualFold(strings.TrimSpace(unit), "kelvin") || strings.EqualFold(u, "K") {
 		return "color_temperature", "色温", "K", 1
+	}
+	if miotIndicatorService(serviceName, "", "") && miotPowerStateName(n) {
+		return "indicator_light", "指示灯", "", 1
 	}
 	switch {
 	case miotPowerStateName(n):
@@ -916,13 +976,20 @@ func miotReadDeviceRefs(spec miotSpecDocument) []miotDevicePropertyRef {
 				continue
 			}
 			field, scale := miotEnergyPropertyField(prop.Name, prop.Description, prop.Type, prop.Unit)
-			if field == "" && (miotPowerStateName(miotNormalizedName(prop.Name)) || strings.Contains(strings.ToLower(prop.Type), ":property:on:") || strings.Contains(strings.ToLower(prop.Type), ":property:switch:") || strings.Contains(strings.ToLower(prop.Type), ":property:power:") || strings.Contains(prop.Description, "开关状态") || strings.Contains(prop.Description, "电源开关") || strings.Contains(prop.Description, "继电器状态")) {
-				field = "on"
+			// Service identity matters: a device can expose both switch.on and
+			// indicator-light.on. Only the actual switch state may drive Device.Power.
+			if stateField := miotStatePropertyField(service.Name, service.Description, service.Type, prop.Name, prop.Description, prop.Type); stateField != "" {
+				field = stateField
 				scale = 1
 			}
-			if field == "on" {
-				// A switch state is a live device state, not an energy metric.
-				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, Field: "on", Label: "开关状态", Scale: 1, Format: prop.Format, ValueList: prop.ValueList})
+			if field == "on" || field == "indicator_light" {
+				// Switch state and indicator LED can both be named "on" but
+				// belong to different MIoT services and must not overwrite each other.
+				label := "开关状态"
+				if field == "indicator_light" {
+					label = "指示灯"
+				}
+				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, ServiceName: service.Name, ServiceDescription: service.Description, ServiceType: service.Type, Field: field, Label: label, Scale: 1, Format: prop.Format, ValueList: prop.ValueList})
 				seen[key] = true
 			} else if field != "" {
 				label := map[string]string{"power": "实时功率", "voltage": "电压", "current": "电流", "today": "今日用电", "week": "本周用电", "month": "本月用电", "year": "本年用电", "total": "累计用电"}[field]
@@ -936,20 +1003,20 @@ func miotReadDeviceRefs(spec miotSpecDocument) []miotDevicePropertyRef {
 				if field == "current" {
 					unit = "A"
 				}
-				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, Field: "energy:" + field, Label: label, Unit: unit, Scale: scale, Format: prop.Format})
+				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, ServiceName: service.Name, ServiceDescription: service.Description, ServiceType: service.Type, Field: "energy:" + field, Label: label, Unit: unit, Scale: scale, Format: prop.Format})
 				seen[key] = true
 			} else if f, label, unit, scale := miotDisplayProperty(prop.Name, prop.Description, service.Name, prop.Unit); f != "" {
-				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, Field: f, Label: label, Unit: unit, Scale: scale, Format: prop.Format, ValueList: prop.ValueList})
+				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, ServiceName: service.Name, ServiceDescription: service.Description, ServiceType: service.Type, Field: f, Label: label, Unit: unit, Scale: scale, Format: prop.Format, ValueList: prop.ValueList})
 				seen[key] = true
 			} else if containsFold(prop.Access, "write") {
 				// Read values for writable settings too, so enum selectors and
 				// power switches reflect their real current state after sync.
-				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, Field: "control", Scale: 1, Format: prop.Format, ControlOnly: true, ValueList: prop.ValueList})
+				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, ServiceName: service.Name, ServiceType: service.Type, Field: "control", Scale: 1, Format: prop.Format, ControlOnly: true, ValueList: prop.ValueList})
 				seen[key] = true
 			}
 		}
 	}
-	priority := map[string]int{"energy:power": 0, "energy:voltage": 1, "energy:current": 2, "temperature": 0, "humidity": 1, "volume": 0, "playback": 1, "muted": 2, "motion": 0, "recording": 1, "storage": 2, "battery": 3, "illuminance": 3, "pm25": 3, "co2": 4, "on": 0}
+	priority := map[string]int{"energy:power": 0, "energy:voltage": 1, "energy:current": 2, "temperature": 0, "humidity": 1, "volume": 0, "playback": 1, "muted": 2, "motion": 0, "recording": 1, "storage": 2, "battery": 3, "illuminance": 3, "pm25": 3, "co2": 4, "on": 0, "indicator_light": 6}
 	sort.SliceStable(refs, func(i, j int) bool {
 		pi, ok := priority[refs[i].Field]
 		if !ok {
@@ -967,12 +1034,98 @@ func miotReadDeviceRefs(spec miotSpecDocument) []miotDevicePropertyRef {
 	return refs
 }
 
+// miotReadDeviceRefsForModel applies model-specific semantic overrides after
+// parsing the public MIoT specification. Some older devices expose multiple
+// boolean properties named "on". For chuangmi.plug.m3 the public specification
+// defines switch.on (2/1) as the outlet relay and indicator-light.on (3/1) as
+// the LED. Never infer the relay from the last boolean result returned by cloud.
+func miotReadDeviceRefsForModel(spec miotSpecDocument, model string) []miotDevicePropertyRef {
+	refs := miotReadDeviceRefs(spec)
+	if !strings.EqualFold(strings.TrimSpace(model), "chuangmi.plug.m3") {
+		return normalizeMIoTPowerRefs(refs)
+	}
+	for i := range refs {
+		switch {
+		case refs[i].SIID == 2 && refs[i].PIID == 1:
+			refs[i].Field = "on"
+			refs[i].Label = "开关状态"
+			refs[i].Unit = ""
+			refs[i].ControlOnly = false
+		case refs[i].SIID == 3 && refs[i].PIID == 1:
+			refs[i].Field = "indicator_light"
+			refs[i].Label = "指示灯"
+			refs[i].Unit = ""
+			refs[i].ControlOnly = false
+		case refs[i].Field == "on":
+			// Any additional on-like property is display-only and must not
+			// drive the outlet's main power state.
+			refs[i].Field = fmt.Sprintf("service_on_%d_%d", refs[i].SIID, refs[i].PIID)
+			refs[i].Label = firstNonEmpty(refs[i].ServiceDescription, refs[i].ServiceName, fmt.Sprintf("服务 %d", refs[i].SIID)) + "状态"
+		}
+	}
+	return refs
+}
+
+// normalizeMIoTPowerRefs prevents ambiguous same-name boolean properties in
+// different services from overwriting one another. A service explicitly named
+// switch/outlet/relay has priority; indicator services are always separate.
+func normalizeMIoTPowerRefs(refs []miotDevicePropertyRef) []miotDevicePropertyRef {
+	indices := make([]int, 0, 2)
+	for i := range refs {
+		if refs[i].Field == "on" {
+			indices = append(indices, i)
+		}
+	}
+	if len(indices) <= 1 {
+		return refs
+	}
+	best := -1
+	bestScore := -1
+	for _, idx := range indices {
+		ref := refs[idx]
+		if miotIndicatorService(ref.ServiceName, ref.ServiceDescription, ref.ServiceType) {
+			refs[idx].Field = "indicator_light"
+			refs[idx].Label = "指示灯"
+			continue
+		}
+		text := miotNormalizedName(strings.Join([]string{ref.ServiceName, ref.ServiceDescription, ref.ServiceType}, " "))
+		score := 0
+		for _, marker := range []string{"switch", "outlet", "socket", "relay", "powerswitch"} {
+			if strings.Contains(text, marker) {
+				score += 10
+			}
+		}
+		if score > bestScore {
+			best, bestScore = idx, score
+		}
+	}
+	if best < 0 {
+		// No service can be identified as the primary relay. Keep only the
+		// first stable candidate as power; label the rest as service states.
+		for _, idx := range indices[1:] {
+			if refs[idx].Field == "on" {
+				refs[idx].Field = fmt.Sprintf("service_on_%d_%d", refs[idx].SIID, refs[idx].PIID)
+				refs[idx].Label = firstNonEmpty(refs[idx].ServiceDescription, refs[idx].ServiceName, fmt.Sprintf("服务 %d", refs[idx].SIID)) + "状态"
+			}
+		}
+		return refs
+	}
+	for _, idx := range indices {
+		if idx == best || refs[idx].Field != "on" {
+			continue
+		}
+		refs[idx].Field = fmt.Sprintf("service_on_%d_%d", refs[idx].SIID, refs[idx].PIID)
+		refs[idx].Label = firstNonEmpty(refs[idx].ServiceDescription, refs[idx].ServiceName, fmt.Sprintf("服务 %d", refs[idx].SIID)) + "状态"
+	}
+	return refs
+}
+
 func miotLiveStateRefs(refs []miotDevicePropertyRef) []miotDevicePropertyRef {
 	// Live view focuses on values users can see changing: power, environment,
 	// activity, basic media and instantaneous electrical measurements. Historical
 	// energy counters remain on the normal account-sync/statistics path.
 	allowed := map[string]bool{
-		"on": true, "temperature": true, "humidity": true, "battery": true,
+		"on": true, "indicator_light": true, "temperature": true, "humidity": true, "battery": true,
 		"illuminance": true, "pressure": true, "pm25": true, "co2": true, "tvoc": true,
 		"volume": true, "playback": true, "muted": true, "motion": true,
 		"motion_enabled": true, "recording": true, "storage": true, "contact": true,
@@ -981,7 +1134,7 @@ func miotLiveStateRefs(refs []miotDevicePropertyRef) []miotDevicePropertyRef {
 	}
 	out := make([]miotDevicePropertyRef, 0, len(refs))
 	for _, ref := range refs {
-		if allowed[ref.Field] {
+		if allowed[ref.Field] || strings.HasPrefix(ref.Field, "service_on_") {
 			out = append(out, ref)
 		}
 	}
@@ -1006,6 +1159,35 @@ func xiaomiWritableSwitch(spec miotSpecDocument) (miotdriver.SwitchProperty, boo
 	return miotdriver.FindWritableSwitch(services)
 }
 
+// xiaomiWritableSwitchForModel resolves the physical outlet relay, not an
+// auxiliary indicator LED. The public chuangmi.plug.m3 MIoT specification has
+// two writable boolean properties named "on": switch.on (2/1) controls power,
+// indicator-light.on (3/1) controls only the LED. Generic first-match lookup
+// is unsafe for this model because service ordering can differ between specs.
+func xiaomiWritableSwitchForModel(spec miotSpecDocument, model string) (miotdriver.SwitchProperty, bool) {
+	if strings.EqualFold(strings.TrimSpace(model), "chuangmi.plug.m3") {
+		for _, service := range spec.Services {
+			if service.IID != 2 {
+				continue
+			}
+			for _, property := range service.Properties {
+				if property.IID != 1 {
+					continue
+				}
+				definition := miotdriver.PropertyDefinition{
+					IID: property.IID, Name: property.Name, Description: property.Description,
+					Type: property.Type, Format: property.Format, Access: append([]string(nil), property.Access...),
+				}
+				if miotdriver.IsPowerSwitch(definition) {
+					return miotdriver.SwitchProperty{SIID: 2, PIID: 1}, true
+				}
+			}
+		}
+		return miotdriver.SwitchProperty{}, false
+	}
+	return xiaomiWritableSwitch(spec)
+}
+
 func miotMeterEligible(category string) bool {
 	switch category {
 	case "插座", "开关", "灯光", "空调", "风扇", "洗碗机", "冰箱", "空气净化器", "加湿器", "扫地机器人":
@@ -1013,6 +1195,56 @@ func miotMeterEligible(category string) bool {
 	default:
 		return false
 	}
+}
+
+// parseMIoTPowerPropertyResponse validates the exact relay property readback.
+// A successful prop/set response only acknowledges the write; it is not a
+// trustworthy source for the device's current state.
+func parseMIoTPowerPropertyResponse(body []byte, did string, siid, piid int) (bool, error) {
+	var envelope struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Result  []struct {
+			DID     string `json:"did"`
+			SIID    int    `json:"siid"`
+			PIID    int    `json:"piid"`
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			Value   any    `json:"value"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return false, fmt.Errorf("解析 MIoT 电源状态响应失败：%w", err)
+	}
+	if envelope.Code != 0 {
+		return false, fmt.Errorf("MIoT 电源状态读取业务错误 code=%d message=%s", envelope.Code, envelope.Message)
+	}
+	for _, item := range envelope.Result {
+		if item.SIID != siid || item.PIID != piid || (item.DID != "" && did != "" && item.DID != did) {
+			continue
+		}
+		if item.Code != 0 {
+			return false, fmt.Errorf("MIoT 电源属性读取失败 code=%d message=%s", item.Code, item.Message)
+		}
+		if value, ok := miotBoolValue(item.Value); ok {
+			return value, nil
+		}
+		return false, fmt.Errorf("MIoT 电源属性值不是布尔值：%v", item.Value)
+	}
+	return false, fmt.Errorf("MIoT 电源状态响应没有匹配 DID/SIID/PIID（%s/%d/%d）", did, siid, piid)
+}
+
+func xiaomiReadMIoTPowerState(ctx context.Context, secret providerSecret, did string, siid, piid int) (bool, error) {
+	ref := miotDevicePropertyRef{SIID: siid, PIID: piid, Field: "on"}
+	payload, err := xiaomiBuildGetPropertiesPayload(did, []miotDevicePropertyRef{ref})
+	if err != nil {
+		return false, err
+	}
+	body, err := xiaomiEncryptedPost(ctx, secret, "/miotspec/prop/get", payload)
+	if err != nil {
+		return false, fmt.Errorf("MIoT 写入后读取电源状态失败：%w", err)
+	}
+	return parseMIoTPowerPropertyResponse(body, did, siid, piid)
 }
 
 func xiaomiCommandDevice(ctx context.Context, secret providerSecret, did, model, command string) error {
@@ -1039,9 +1271,9 @@ func xiaomiCommandDevice(ctx context.Context, secret providerSecret, did, model,
 	if err != nil {
 		return fmt.Errorf("下载小米设备控制规格失败：%w", err)
 	}
-	property, ok := xiaomiWritableSwitch(spec)
+	property, ok := xiaomiWritableSwitchForModel(spec, model)
 	if !ok {
-		return errors.New("该小米设备的 MIoT 规格没有可写开关属性，不能控制")
+		return errors.New("该小米设备的 MIoT 规格没有可写主电源开关属性，不能控制")
 	}
 	payload, err := miotdriver.BuildSetPropertyPayload(did, property, enabled)
 	if err != nil {
@@ -1151,6 +1383,14 @@ func miotFormatAttribute(ref miotDevicePropertyRef, raw any) string {
 	if raw == nil {
 		return ""
 	}
+	if ref.Field == "on" || ref.Field == "indicator_light" {
+		if enabled, ok := miotBoolValue(raw); ok {
+			if enabled {
+				return "开启"
+			}
+			return "关闭"
+		}
+	}
 	for _, item := range ref.ValueList {
 		if fmt.Sprint(item.Value) == fmt.Sprint(raw) && strings.TrimSpace(item.Description) != "" {
 			return item.Description
@@ -1219,18 +1459,27 @@ func xiaomiPopulateDeviceDetailsWithOptions(ctx context.Context, secret provider
 	xiaomiPopulateDeviceDetailsLegacy(ctx, secret, devices, includeEnergyStats, onlineOnly)
 }
 
-// xiaomiPopulateDeviceDetailsBatched is the lightweight live-state path. HA's
-// Xiaomi cloud client accepts a list of {did,siid,piid} tuples in one prop/get
-// request; batching avoids one HTTPS request per device while the page is open.
+// xiaomiPopulateLiveDeviceDetailsBatched reads live properties using the
+// legacy xiaomiio session. The request is deliberately isolated per DID:
+// some Xiaomi cloud responses omit DID from result rows, and a cross-device
+// batch cannot safely map such rows back to their source device.
 func xiaomiPopulateLiveDeviceDetailsBatched(ctx context.Context, secret providerSecret, devices []Device) {
 	if len(devices) == 0 {
 		return
 	}
+
+	// Warm the MIoT model index once. A successful fetch is shared by all
+	// devices through miotSpecCache for the next 24 hours.
+	indexErr := error(nil)
 	for i := range devices {
-		if strings.TrimSpace(devices[i].Model) != "" {
-			_, _ = fetchMIoTModelType(ctx, devices[i].Model)
-			break
+		if strings.TrimSpace(devices[i].Model) == "" {
+			continue
 		}
+		_, indexErr = fetchMIoTModelType(ctx, devices[i].Model)
+		if indexErr != nil {
+			devices[i].StateIssue = indexErr.Error()
+		}
+		break
 	}
 	miotSpecCache.Lock()
 	indexReady := !miotSpecCache.indexAt.IsZero()
@@ -1238,23 +1487,39 @@ func xiaomiPopulateLiveDeviceDetailsBatched(ctx context.Context, secret provider
 	if !indexReady {
 		for i := range devices {
 			devices[i].Category = guessCategoryWithMIoT(devices[i].Name, devices[i].Model, "")
+			if devices[i].Online && devices[i].StateIssue == "" {
+				devices[i].StateIssue = "MIoT 规格索引暂不可用"
+			}
 		}
 		return
 	}
+
 	types := make([]string, len(devices))
 	for i := range devices {
-		if devices[i].Model == "" {
+		devices[i].Category = guessCategoryWithMIoT(devices[i].Name, devices[i].Model, "")
+		if strings.TrimSpace(devices[i].Model) == "" {
+			if devices[i].Online {
+				devices[i].StateIssue = "设备没有 model，无法匹配 MIoT 规格"
+			}
 			continue
 		}
-		types[i], _ = fetchMIoTModelType(ctx, devices[i].Model)
-		devices[i].Category = guessCategoryWithMIoT(devices[i].Name, devices[i].Model, "")
+		typ, err := fetchMIoTModelType(ctx, devices[i].Model)
+		if err != nil {
+			devices[i].StateIssue = err.Error()
+			continue
+		}
+		types[i] = typ
+		devices[i].Category = guessCategoryWithMIoT(devices[i].Name, devices[i].Model, typ)
 	}
-	type readPlan struct{ refs []miotDevicePropertyRef }
+
+	type readPlan struct {
+		refs []miotDevicePropertyRef
+	}
 	plans := make([]readPlan, len(devices))
-	sem := make(chan struct{}, 4)
+	sem := make(chan struct{}, 3)
 	var wg sync.WaitGroup
 	for i := range devices {
-		if types[i] == "" || devices[i].RemoteID == "" || !devices[i].Online {
+		if !devices[i].Online || devices[i].RemoteID == "" || types[i] == "" {
 			continue
 		}
 		wg.Add(1)
@@ -1266,21 +1531,21 @@ func xiaomiPopulateLiveDeviceDetailsBatched(ctx context.Context, secret provider
 				return
 			}
 			defer func() { <-sem }()
-			deviceCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			deviceCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 			spec, err := fetchMIoTSpec(deviceCtx, types[index])
 			if err != nil {
+				devices[index].StateIssue = "读取 MIoT 设备规格失败：" + err.Error()
 				return
 			}
 			devices[index].Controls = xiaomiBuildDeviceControls(spec)
-			if _, ok := xiaomiWritableSwitch(spec); ok {
+			if _, ok := xiaomiWritableSwitchForModel(spec, devices[index].Model); ok {
 				devices[index].CanControl = true
 			}
 			if len(devices[index].Controls) > 0 {
 				devices[index].CanControl = true
 			}
-			refs := miotReadDeviceRefs(spec)
-			refs = miotLiveStateRefs(refs)
+			refs := miotLiveStateRefs(miotReadDeviceRefsForModel(spec, devices[index].Model))
 			if !miotMeterEligible(devices[index].Category) {
 				filtered := refs[:0]
 				for _, ref := range refs {
@@ -1291,68 +1556,106 @@ func xiaomiPopulateLiveDeviceDetailsBatched(ctx context.Context, secret provider
 				refs = filtered
 			}
 			plans[index].refs = refs
+			if len(refs) == 0 {
+				devices[index].StateIssue = "MIoT 规格中没有可读取的实时属性（access 不包含 read）"
+			}
 		}(i)
 	}
 	wg.Wait()
 	if ctx.Err() != nil {
 		return
 	}
-	type propRequest struct {
-		DID  string `json:"did"`
-		SIID int    `json:"siid"`
-		PIID int    `json:"piid"`
-	}
-	requests := make([]propRequest, 0, len(devices)*4)
+
+	// One property-get call per device. Keep bounded concurrency to avoid
+	// bursts against Xiaomi cloud; properties of the same DID stay batched.
 	for i := range devices {
-		for _, ref := range plans[i].refs {
-			requests = append(requests, propRequest{DID: devices[i].RemoteID, SIID: ref.SIID, PIID: ref.PIID})
-		}
-	}
-	if len(requests) == 0 {
-		return
-	}
-	type resultEnvelope struct {
-		Code    int               `json:"code"`
-		Message string            `json:"message,omitempty"`
-		Result  []json.RawMessage `json:"result"`
-	}
-	combined := resultEnvelope{Code: 0, Result: make([]json.RawMessage, 0, len(requests))}
-	const maxPropsPerRequest = 80
-	for start := 0; start < len(requests); start += maxPropsPerRequest {
-		if ctx.Err() != nil {
-			return
-		}
-		end := min(start+maxPropsPerRequest, len(requests))
-		chunk := requests[start:end]
-		payload, err := json.Marshal(map[string]any{"params": chunk})
-		if err != nil {
+		if !devices[i].Online || devices[i].RemoteID == "" || len(plans[i].refs) == 0 {
 			continue
 		}
-		requestCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
-		body, readErr := xiaomiEncryptedPost(requestCtx, secret, "/miotspec/prop/get", payload)
-		cancel()
-		if readErr != nil {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+			requestCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+			defer cancel()
+			payload, err := xiaomiBuildGetPropertiesPayload(devices[index].RemoteID, plans[index].refs)
+			if err != nil {
+				devices[index].StateIssue = "构造 MIoT 属性读取请求失败：" + err.Error()
+				return
+			}
+			body, err := xiaomiEncryptedPost(requestCtx, secret, "/miotspec/prop/get", payload)
+			if err != nil {
+				devices[index].StateIssue = "请求 MIoT prop/get 失败：" + truncate(sanitizeIntegrationLog(err.Error()), 220)
+				return
+			}
+			var envelope struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				Result  []any  `json:"result"`
+			}
+			if err := json.Unmarshal(body, &envelope); err != nil {
+				devices[index].StateIssue = "解析 MIoT prop/get 响应失败：" + err.Error()
+				return
+			}
+			if envelope.Code != 0 {
+				devices[index].StateIssue = fmt.Sprintf("MIoT prop/get 业务错误 code=%d message=%s", envelope.Code, truncate(sanitizeIntegrationLog(envelope.Message), 160))
+				return
+			}
+			needsPowerState := false
+			for _, ref := range plans[index].refs {
+				if ref.Field == "on" {
+					needsPowerState = true
+					break
+				}
+			}
+			applied := applyMIoTDeviceResultForDID(&devices[index], plans[index].refs, body, false)
+			if applied == 0 {
+				devices[index].StateIssue = fmt.Sprintf("MIoT prop/get 返回 %d 条记录，但没有匹配到请求的 SIID/PIID", len(envelope.Result))
+				return
+			}
+			if needsPowerState && devices[index].Power == nil {
+				devices[index].StateIssue = "MIoT 属性读取有响应，但未返回有效的开关属性值（switch.on）；其他属性不能代替电源状态"
+				return
+			}
+			devices[index].StateIssue = ""
+		}(i)
+	}
+	wg.Wait()
+}
+
+// xiaomiBuildGetPropertiesPayload keeps a property batch within a single DID.
+// Xiaomi's legacy xiaomiio endpoint may omit DID in result records; isolation
+// makes matching by (SIID, PIID) unambiguous without weakening cross-device checks.
+func xiaomiBuildGetPropertiesPayload(did string, refs []miotDevicePropertyRef) ([]byte, error) {
+	did = strings.TrimSpace(did)
+	if did == "" {
+		return nil, errors.New("MIoT 请求缺少 did")
+	}
+	if len(refs) == 0 {
+		return nil, errors.New("MIoT 请求没有属性")
+	}
+	params := make([]map[string]any, 0, len(refs))
+	seen := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		if ref.SIID <= 0 || ref.PIID <= 0 {
 			continue
 		}
-		var response resultEnvelope
-		if json.Unmarshal(body, &response) != nil || response.Code != 0 {
+		key := fmt.Sprintf("%d:%d", ref.SIID, ref.PIID)
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		combined.Result = append(combined.Result, response.Result...)
+		seen[key] = struct{}{}
+		params = append(params, map[string]any{"did": did, "siid": ref.SIID, "piid": ref.PIID})
 	}
-	if len(combined.Result) == 0 {
-		return
+	if len(params) == 0 {
+		return nil, errors.New("MIoT 请求没有有效的 SIID/PIID")
 	}
-	combinedBody, err := json.Marshal(combined)
-	if err != nil {
-		return
-	}
-	for i := range devices {
-		if len(plans[i].refs) == 0 {
-			continue
-		}
-		applyMIoTDeviceResultForDID(&devices[i], plans[i].refs, combinedBody, true)
-	}
+	return json.Marshal(map[string]any{"params": params})
 }
 
 func xiaomiPopulateDeviceDetailsLegacy(ctx context.Context, secret providerSecret, devices []Device, includeEnergyStats, onlineOnly bool) {
@@ -1407,13 +1710,13 @@ func xiaomiPopulateDeviceDetailsLegacy(ctx context.Context, secret providerSecre
 				return
 			}
 			devices[index].Controls = xiaomiBuildDeviceControls(spec)
-			if writable, ok := xiaomiWritableSwitch(spec); ok && writable.SIID > 0 && writable.PIID > 0 {
+			if writable, ok := xiaomiWritableSwitchForModel(spec, devices[index].Model); ok && writable.SIID > 0 && writable.PIID > 0 {
 				devices[index].CanControl = true
 			}
 			if len(devices[index].Controls) > 0 {
 				devices[index].CanControl = true
 			}
-			refs := miotReadDeviceRefs(spec)
+			refs := miotReadDeviceRefsForModel(spec, devices[index].Model)
 			if !miotMeterEligible(devices[index].Category) {
 				filtered := refs[:0]
 				for _, ref := range refs {
@@ -1465,7 +1768,7 @@ func applyMIoTDeviceResult(device *Device, refs []miotDevicePropertyRef, body []
 // applyMIoTDeviceResultForDID applies property values to one device. In a
 // multi-device batch, DID is mandatory: matching only SIID/PIID can otherwise
 // copy one device's switch state onto another device with the same spec.
-func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, body []byte, requireDID bool) {
+func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, body []byte, requireDID bool) int {
 	energy := &EnergyMetrics{Supported: false, Source: "小米 MIoT", UpdatedAt: time.Now()}
 	for _, ref := range refs {
 		if strings.HasPrefix(ref.Field, "energy:") {
@@ -1487,13 +1790,14 @@ func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, b
 		} `json:"result"`
 	}
 	if json.Unmarshal(body, &env) != nil || env.Code != 0 {
-		return
+		return 0
 	}
 	refMap := make(map[string]miotDevicePropertyRef, len(refs))
 	for _, ref := range refs {
 		refMap[fmt.Sprintf("%d:%d", ref.SIID, ref.PIID)] = ref
 	}
 	attrs := make([]DeviceAttribute, 0, len(refs))
+	applied := 0
 	for _, item := range env.Result {
 		if item.Code != 0 {
 			continue
@@ -1511,16 +1815,22 @@ func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, b
 			continue
 		}
 		device.StateRead = true
+		applied++
 		for index := range device.Controls {
 			control := &device.Controls[index]
 			if control.Kind != "property" || control.SIID != item.SIID || control.PIID != item.PIID {
 				continue
 			}
 			control.Value = item.Value
-			// Some MIoT specifications name the writable power flag relay_state,
-			// switch_state, etc. The discovered control label is more reliable
-			// than relying only on a normalized property field name.
-			if control.Name == "电源开关" {
+			if strings.EqualFold(control.Format, "bool") || strings.EqualFold(control.Format, "boolean") {
+				if enabled, ok := miotBoolValue(item.Value); ok {
+					control.Value = enabled
+				}
+			}
+			// Backward-compatible fallback for custom specs whose relay property
+			// is exposed only as a writable control. Never use this for an LED or
+			// indicator service, even if its translated label contains "开关".
+			if ref.Field == "control" && control.Name == "电源开关" && !miotIndicatorService(ref.ServiceName, "", ref.ServiceType) {
 				if enabled, ok := miotBoolValue(item.Value); ok {
 					device.Power = &enabled
 				}
@@ -1570,6 +1880,7 @@ func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, b
 	}
 	device.Attributes = attrs
 	device.Value = summarizeDeviceAttributes(device)
+	return applied
 }
 
 func summarizeDeviceAttributes(device *Device) string {

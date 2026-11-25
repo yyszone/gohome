@@ -36,7 +36,6 @@ func (m *integrationManager) updatePageActivity(clientID string, active bool) in
 		return 0
 	}
 	now := time.Now()
-	var cancel context.CancelFunc
 	m.activityMu.Lock()
 	if m.pageLeases == nil {
 		m.pageLeases = make(map[string]time.Time)
@@ -64,14 +63,15 @@ func (m *integrationManager) updatePageActivity(clientID string, active bool) in
 		m.lastStatePoll = time.Time{}
 	}
 	if wasActive && !isActive {
+		// Do not cancel a cloud request already in flight. A page hiding while
+		// Xiaomi is waiting for device_list used to cancel the HTTP request and
+		// surface a misleading "context canceled" sync failure. The current
+		// account request is allowed to finish once; no new poll is started
+		// without an active page lease.
 		m.lastStatePoll = time.Time{}
-		cancel = m.pollCancel
 	}
 	count := len(m.pageLeases)
 	m.activityMu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
 	return count
 }
 
@@ -79,7 +79,6 @@ func (m *integrationManager) activePageCount(now time.Time) int {
 	if m == nil {
 		return 0
 	}
-	var cancel context.CancelFunc
 	m.activityMu.Lock()
 	for id, until := range m.pageLeases {
 		if !until.After(now) {
@@ -88,13 +87,11 @@ func (m *integrationManager) activePageCount(now time.Time) int {
 	}
 	count := len(m.pageLeases)
 	if count == 0 {
+		// Stop scheduling future polls, but let a request already in flight
+		// complete. Its context is owned by the app lifetime, not by the page.
 		m.lastStatePoll = time.Time{}
-		cancel = m.pollCancel
 	}
 	m.activityMu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
 	return count
 }
 
@@ -127,11 +124,7 @@ func (m *integrationManager) startProviderStatePollIfNeeded(parent context.Conte
 	}
 	if len(m.pageLeases) == 0 {
 		m.lastStatePoll = time.Time{}
-		cancel := m.pollCancel
 		m.activityMu.Unlock()
-		if cancel != nil {
-			cancel()
-		}
 		return false
 	}
 	if m.pollRunning || (!m.lastStatePoll.IsZero() && now.Sub(m.lastStatePoll) < providerStatePollInterval) {

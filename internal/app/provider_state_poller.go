@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -16,6 +17,7 @@ func (m *integrationManager) refreshAllProviderStates(ctx context.Context) {
 	if m == nil || m.store == nil || m.vault == nil {
 		return
 	}
+	pollStartedAt := time.Now()
 	m.providerPollMu.Lock()
 	defer m.providerPollMu.Unlock()
 
@@ -28,8 +30,27 @@ func (m *integrationManager) refreshAllProviderStates(ctx context.Context) {
 			continue
 		}
 		accountCtx, cancel := context.WithTimeout(ctx, 55*time.Second)
-		changed, err := m.refreshProviderStatesForAccount(accountCtx, account)
+		changed, err := m.refreshProviderStatesForAccountAt(accountCtx, account, pollStartedAt)
+		accountContextErr := accountCtx.Err()
 		cancel()
+		if ctx.Err() != nil {
+			return // The GoHome process itself is shutting down.
+		}
+		// A single account request can be canceled or time out without meaning
+		// that its credentials expired. Do not stop polling other accounts. The
+		// Xiaomi refresh path clears stale power values so the UI never keeps an
+		// old ON state after an incomplete read.
+		if errors.Is(accountContextErr, context.Canceled) || errors.Is(accountContextErr, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if strings.EqualFold(account.Provider, "xiaomi") {
+				_, _ = m.store.clearAccountPowerStatesSince(account.ID, pollStartedAt)
+			}
+			issue := err
+			if issue == nil {
+				issue = accountContextErr
+			}
+			m.noteProviderPollIssue(account, fmt.Errorf("本轮状态请求被取消或超时（不是登录失效），等待下一轮状态确认：%w", issue))
+			continue
+		}
 		if err != nil {
 			m.noteProviderPollIssue(account, err)
 			continue
@@ -50,6 +71,10 @@ func providerAccountCanPoll(status string) bool {
 }
 
 func (m *integrationManager) refreshProviderStatesForAccount(ctx context.Context, account Account) (int, error) {
+	return m.refreshProviderStatesForAccountAt(ctx, account, time.Now())
+}
+
+func (m *integrationManager) refreshProviderStatesForAccountAt(ctx context.Context, account Account, pollStartedAt time.Time) (int, error) {
 	var secret providerSecret
 	if err := m.vault.Get(account.ID, &secret); err != nil {
 		return 0, fmt.Errorf("读取账号会话失败：%w", err)
@@ -60,6 +85,16 @@ func (m *integrationManager) refreshProviderStatesForAccount(ctx context.Context
 		var err error
 		devices, err = xiaomiFetchDevicesForStateRefresh(ctx, secret)
 		if err != nil {
+			// A failed list/property read must not leave an old "已开启" value
+			// in the UI. Clear only cached power projections. The encrypted
+			// Xiaomi session in the Vault is deliberately never modified here. If
+			// this request began before a recent command, the Store preserves that
+			// command's optimistic state rather than clearing it.
+			if m.store != nil {
+				if _, clearErr := m.store.clearAccountPowerStatesSince(account.ID, pollStartedAt); clearErr != nil {
+					m.noteProviderPollIssue(account, fmt.Errorf("清除过期小米电源状态失败：%w", clearErr))
+				}
+			}
 			return 0, fmt.Errorf("小米云端状态读取失败：%w", err)
 		}
 	case "ewelink":
@@ -83,7 +118,23 @@ func (m *integrationManager) refreshProviderStatesForAccount(ctx context.Context
 		return 0, nil
 	}
 
-	changed, err := m.store.refreshDeviceStates(account.ID, devices)
+	if strings.EqualFold(account.Provider, "xiaomi") {
+		issues := make([]string, 0, 5)
+		for _, device := range devices {
+			if strings.TrimSpace(device.StateIssue) == "" {
+				continue
+			}
+			issues = append(issues, fmt.Sprintf("%s(%s): %s", device.Name, device.Model, device.StateIssue))
+			if len(issues) >= 5 {
+				break
+			}
+		}
+		if len(issues) > 0 {
+			m.noteProviderPollIssue(account, fmt.Errorf("MIoT 实时属性未全部读取：%s", strings.Join(issues, "；")))
+		}
+	}
+
+	changed, err := m.store.refreshDeviceStatesSince(account.ID, devices, pollStartedAt)
 	if err != nil {
 		return changed, fmt.Errorf("保存设备状态失败：%w", err)
 	}

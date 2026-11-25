@@ -31,3 +31,13 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+## Xiaomi MIoT protocol references
+
+GoHome independently implements requests using public MIoT Spec definitions and the legacy Xiaomi account API behavior documented by the community `hass-xiaomi-miot` project. No source code from Xiaomi's `ha_xiaomi_home` integration is copied into GoHome. The official integration repository contains a Xiaomi-specific license that limits its licensed work to Home Assistant for non-commercial use; review that repository's license before redistributing its source.
+
+References:
+- https://miot-spec.org/miot-spec-v2/instances?status=all
+- https://github.com/al-one/hass-xiaomi-miot
+- https://github.com/XiaoMi/ha_xiaomi_home

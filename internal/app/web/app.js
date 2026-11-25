@@ -1,4 +1,5 @@
 const state = { devices: [], accounts: [], discovery: [], logs: [], page: 'overview', liveRevision: 0, xiaomiChallengeId: '', xiaomiChallengeType: '', xiaomiVerifyFlag: 0 };
+const pendingDeviceCommands = new Set();
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 // Older data files or empty Go slices may decode as null; keep UI collections safe.
@@ -141,8 +142,30 @@ function renderEnergyMetrics(energy) {
   return `<section class="energy-panel"><div class="energy-head"><strong>用电统计</strong><span class="energy-badge">${source || '计量数据'}</span></div><div class="energy-grid">${metrics.map(([label,value,unit,digits]) => { const hint = label === '今日用电' ? energy.todaySource : label === '本周用电' ? energy.weekSource : ''; return `<div class="energy-metric ${label === '今日用电' || label === '本周用电' ? 'energy-period-metric' : ''}"><small>${label}</small><strong>${formatMetric(value,digits)} <em>${unit}</em></strong>${hint ? `<small class="energy-source-hint">${esc(hint)}</small>` : ''}</div>`; }).join('')}</div>${updated || periodHint ? `<div class="energy-foot">${updated}${periodHint}</div>` : ''}</section>`;
 }
 
+function deviceDisplayAttributes(d) {
+  const attrs = asArray(d?.attributes).filter(a => a && a.label && a.value !== undefined && a.value !== null).map(a => ({...a}));
+  if (String(d?.model || '').trim().toLowerCase() !== 'chuangmi.plug.m3') return attrs;
+  // Old data may contain two rows both named "开关状态" because switch.on
+  // and indicator-light.on were conflated. Only Device.power (read from 2/1)
+  // may generate the main relay row; keep the LED as a separate indicator.
+  const filtered = [];
+  for (const attr of attrs) {
+    const key = String(attr.key || '').trim().toLowerCase();
+    if (key === 'indicator_light' || key === 'service_on_3_1') {
+      attr.label = '指示灯';
+      filtered.push(attr);
+      continue;
+    }
+    if (key === 'on' || ['开关状态','电源开关'].includes(String(attr.label || '').trim())) continue;
+    filtered.push(attr);
+  }
+  if (typeof d.power === 'boolean') {
+    filtered.unshift({key:'on', label:'开关状态', value:d.power ? '开启' : '关闭'});
+  }
+  return filtered;
+}
 function renderDeviceAttributes(d) {
-  const attrs = asArray(d.attributes).filter(a => a && a.label && a.value !== undefined && a.value !== null).slice(0, 8);
+  const attrs = deviceDisplayAttributes(d).slice(0, 8);
   if (!attrs.length) return '';
   return `<section class="device-attributes"><span class="device-attributes-head">设备状态</span><div class="device-attributes-grid">${attrs.map(a => `<span class="device-attribute"><small>${esc(a.label)}</small><strong>${esc(a.value)}${a.unit ? `<em>${esc(a.unit)}</em>` : ''}</strong></span>`).join('')}</div></section>`;
 }
@@ -166,22 +189,42 @@ function overviewEnergy(d) {
   if (!items.length) return '';
   return `<div class="overview-energy">${items.map(([label,value,unit,digits,source]) => `<div><small>${label}</small><strong>${formatMetric(value,digits)} <em>${unit}</em></strong>${source ? `<small class="overview-energy-source">${esc(source)}</small>` : ''}</div>`).join('')}</div><div class="overview-energy-updated">计量更新 ${fmtTime(energy.updatedAt)}</div>`;
 }
+function devicePowerSummary(d, channels=asArray(d.channels)) {
+  if (channels.length > 1) return `${channels.filter(ch => ch.power === true).length}/${channels.length} 路开启`;
+  if (d.power === true) return '已开启';
+  if (d.power === false) return '已关闭';
+  if (d.canControl || String(d?.model || '').trim().toLowerCase() === 'chuangmi.plug.m3') return '开关状态未知';
+  return d.value || deviceFallbackSummary(d);
+}
+function isPrimaryMIoTPowerControl(d, c) {
+  if (!c || c.kind !== 'property' || !['bool','boolean'].includes(String(c.format || '').toLowerCase())) return false;
+  if (String(d?.model || '').toLowerCase() === 'chuangmi.plug.m3') return Number(c.siid) === 2 && Number(c.piid) === 1;
+  return miotControlLabel(c.name) === '电源开关';
+}
+function miotControlLabelForDevice(d, c) {
+  if (String(d?.model || '').toLowerCase() === 'chuangmi.plug.m3' && Number(c?.siid) === 3 && Number(c?.piid) === 1) return '指示灯';
+  return miotControlLabel(c?.name);
+}
+function isDisplayOnlyMIoTProperty(d, c) {
+  // The plug's indicator LED is useful telemetry but should not render a
+  // second on/off button beside the primary relay switch.
+  return c?.kind === 'property'
+    && String(d?.model || '').trim().toLowerCase() === 'chuangmi.plug.m3'
+    && Number(c?.siid) === 3 && Number(c?.piid) === 1;
+}
 function renderDeviceCard(d) {
   const [cls, icon] = glyph(d.category);
   const online = d.online ? '<span class="device-status">● 在线</span>' : '<span class="device-status offline">● 离线</span>';
   const channels = asArray(d.channels);
-  const controls = asArray(d.controls).filter(c => c && ((c.kind === 'property' && miotControlLabel(c.name)) || (c.kind === 'action' && isSafeVisibleMIoTAction(c))));
-  const controlCount = controls.length + channels.length + (d.canControl && d.power !== null && d.power !== undefined && !channels.length ? 1 : 0);
+  const controls = asArray(d.controls).filter(c => c && !isPrimaryMIoTPowerControl(d, c) && !isDisplayOnlyMIoTProperty(d, c) && ((c.kind === 'property' && miotControlLabelForDevice(d, c)) || (c.kind === 'action' && isSafeVisibleMIoTAction(c))));
+  const controlCount = controls.length + channels.length + (d.canControl && !channels.length ? 1 : 0);
   const hasControls = controlCount > 0 && d.canControl || controls.length > 0;
-  const onCount = channels.filter(ch => ch.power === true).length;
-  const summary = channels.length > 1
-    ? `${onCount}/${channels.length} 路开启`
-    : d.power !== null && d.power !== undefined ? (d.power ? '已开启' : '已关闭') : (d.value || deviceFallbackSummary(d));
+  const summary = devicePowerSummary(d, channels);
   const control = renderDeviceControls(d);
   const controlHTML = hasControls && control
     ? `<details class="overview-control-details"><summary><strong>设备控制</strong><span>${controlCount} 项可用</span></summary><div class="overview-control-body">${control}</div></details>`
     : (d.energy?.supported || asArray(d.attributes).length) ? '<span class="overview-readonly">实时监测 · 只读设备</span>' : '';
-  const attrs = asArray(d.attributes).filter(a => a && a.label && a.value !== undefined && a.value !== null).slice(0, 2);
+  const attrs = deviceDisplayAttributes(d).slice(0, 2);
   return `<article class="device-card ${controlCount >= 5 ? 'has-rich-controls' : ''}">
     <div class="overview-device-head">
       <div class="overview-device-identity"><div class="device-glyph ${cls}">${icon}</div><div class="overview-device-title"><h3 title="${esc(d.name)}">${esc(d.name)}</h3><small>${esc(deviceBrandGroup(d))} · ${esc(d.room || '未分区')}</small></div></div>
@@ -228,13 +271,17 @@ function isSafeVisibleMIoTAction(c) {
   if (/delete|\bdel\b|reset|format|unbind|erase|factory|restart|calibrat|clear|remove|upload video|sync manual/.test(name)) return false;
   return !['设备操作','unknown','action'].includes(String(c.name || '').trim().toLowerCase());
 }
+function deviceCommandPending(id, channel) {
+  return pendingDeviceCommands.has(`${id}:${channel === undefined || channel === null ? 'default' : Number(channel)}`);
+}
 function renderDeviceControls(d) {
   const channels = asArray(d.channels);
   const hasPower = d.power !== null && d.power !== undefined;
   const controls = asArray(d.controls);
   const propertyControls = controls.filter(c => c && c.kind === 'property'
-    && !(miotControlLabel(c.name) === '电源开关' && ['bool','boolean'].includes(String(c.format).toLowerCase()) && hasPower)
-    && miotControlLabel(c.name));
+    && !isPrimaryMIoTPowerControl(d, c)
+    && !isDisplayOnlyMIoTProperty(d, c)
+    && miotControlLabelForDevice(d, c));
   const actionControls = controls.filter(c => c && c.kind === 'action' && isSafeVisibleMIoTAction(c));
   const simpleProperties = propertyControls.filter(c => {
     const format = String(c.format || '').toLowerCase();
@@ -246,15 +293,20 @@ function renderDeviceControls(d) {
   });
   let powerHTML = '';
   if (channels.length > 1 && d.canControl) {
-    powerHTML = `<div class="device-channel-controls">${channels.map(ch => `<div class="device-channel-row"><span>${esc(ch.name || `通道 ${Number(ch.outlet)+1}`)}</span><button class="switch ${ch.power ? 'on' : ''}" data-command="toggle" data-channel="${Number(ch.outlet)}" data-id="${esc(d.id)}" aria-label="切换${esc(d.name)} ${esc(ch.name || `通道 ${Number(ch.outlet)+1}`)}"></button></div>`).join('')}</div>`;
+    powerHTML = `<div class="device-channel-controls">${channels.map(ch => `<div class="device-channel-row"><span>${esc(ch.name || `通道 ${Number(ch.outlet)+1}`)}</span><button class="switch ${ch.power ? 'on' : ''}"${deviceCommandPending(d.id, Number(ch.outlet)) ? ' disabled' : ''} data-command="toggle" data-channel="${Number(ch.outlet)}" data-id="${esc(d.id)}" aria-label="切换${esc(d.name)} ${esc(ch.name || `通道 ${Number(ch.outlet)+1}`)}"></button></div>`).join('')}</div>`;
   } else if (d.canControl && hasPower) {
-    const channel = channels.length === 1 ? ` data-channel="${Number(channels[0].outlet)}"` : '';
-    powerHTML = `<button class="switch ${d.power ? 'on' : ''}" data-command="toggle"${channel} data-id="${esc(d.id)}" aria-label="切换${esc(d.name)}"></button>`;
+    const powerChannel = channels.length === 1 ? Number(channels[0].outlet) : undefined;
+    const channel = powerChannel === undefined ? '' : ` data-channel="${powerChannel}"`;
+    powerHTML = `<button class="switch ${d.power ? 'on' : ''}"${deviceCommandPending(d.id, powerChannel) ? ' disabled' : ''} data-command="toggle"${channel} data-id="${esc(d.id)}" aria-label="切换${esc(d.name)}"></button>`;
+  } else if (d.canControl) {
+    // Unknown state must not be rendered as ON or guessed by a toggle.
+    // Explicit ON/OFF controls remain safe while the next cloud read is pending.
+    powerHTML = `<div class="miot-control-buttons power-state-unknown"><button type="button" class="miot-action-btn"${deviceCommandPending(d.id) ? ' disabled' : ''} data-command="turn_on" data-id="${esc(d.id)}">开启</button><button type="button" class="miot-action-btn"${deviceCommandPending(d.id) ? ' disabled' : ''} data-command="turn_off" data-id="${esc(d.id)}">关闭</button></div>`;
   }
 
   const propertyHTML = c => {
     const format = String(c.format || '').toLowerCase();
-    const label = miotControlLabel(c.name);
+    const label = miotControlLabelForDevice(d, c);
     if (['bool','boolean'].includes(format)) {
       const known = typeof c.value === 'boolean';
       const value = known ? c.value : false;
@@ -351,10 +403,7 @@ function renderDeviceRow(d) {
   const [cls, icon] = glyph(d.category);
   const status = d.online ? '<span class="device-status">● 在线</span>' : '<span class="device-status offline">● 离线</span>';
   const channels = asArray(d.channels);
-  const summary = channels.length > 1
-    ? `${channels.filter(ch => ch.power === true).length}/${channels.length} 路开启`
-    : d.power !== null && d.power !== undefined ? (d.power ? '已开启' : '已关闭')
-    : (d.value || deviceFallbackSummary(d));
+  const summary = devicePowerSummary(d, channels);
   const richControls = channels.length >= 4 || asArray(d.controls).filter(c => c && ((c.kind === 'property' && miotControlLabel(c.name)) || (c.kind === 'action' && isSafeVisibleMIoTAction(c)))).length + channels.length >= 5;
   return `<article class="device-list-item ${richControls ? 'has-rich-controls' : ''}">
     <div class="device-list-main">
@@ -480,6 +529,46 @@ function updateOverviewLiveCounters() {
   if ($('#stat-on')) $('#stat-on').textContent = String(on);
   if ($('#online-rate')) $('#online-rate').textContent = total ? `${Math.round(online / total * 100)}% 在线率` : '暂无设备';
 }
+function updateLocalCommandPower(device, enabled, channel) {
+  if (!device) return;
+  const channels = asArray(device.channels);
+  if (channel !== undefined && channel !== null && channels.length) {
+    const item = channels.find(ch => Number(ch.outlet) === Number(channel));
+    if (item) item.power = enabled;
+    // A single-channel relay is still represented by the device-level switch
+    // in the compact card. Mirror its only channel into Device.Power as well.
+    if (channels.length === 1) device.power = enabled;
+    else if (Number(channel) === 0) device.power = enabled;
+  } else {
+    device.power = enabled;
+  }
+  if (device.power === enabled && (channel === undefined || channels.length <= 1 || Number(channel) === 0)) {
+    const attributes = asArray(device.attributes);
+    let relay = attributes.find(a => a.key === 'on' || a.label === '开关状态' || a.label === '电源开关');
+    if (!relay) {
+      relay = { key: 'on', label: '开关状态', value: enabled ? '开启' : '关闭' };
+      attributes.push(relay);
+    } else {
+      relay.key = 'on'; relay.label = '开关状态'; relay.value = enabled ? '开启' : '关闭';
+    }
+    device.attributes = attributes;
+    if (String(device.model || '').trim().toLowerCase() === 'chuangmi.plug.m3') {
+      const led = attributes.find(a => a.key === 'indicator_light');
+      if (led) led.label = '指示灯';
+    }
+  }
+  device.online = true;
+  device.lastSeen = new Date().toISOString();
+}
+function applyCommandDeviceSnapshot(snapshot) {
+  if (!snapshot || !snapshot.id) return;
+  const current = state.devices.find(d => d.id === snapshot.id);
+  if (current) Object.assign(current, snapshot);
+  else state.devices.push(snapshot);
+  renderDevices();
+  updateOverviewLiveCounters();
+}
+
 async function refreshLiveAfterControl() {
   // A successful command updates the server-side live revision. Read only that
   // delta; do not reload accounts, discovery, logs or rebuild the whole page.
@@ -590,7 +679,34 @@ document.addEventListener('click', async (e) => {
     if(add.dataset.action==='add-ewelink') askAccount('ewelink');
     return;
   }
-  const cmd=e.target.closest('[data-command]'); if(cmd){cmd.disabled=true;try{const body={command:cmd.dataset.command};if(cmd.dataset.channel!==undefined)body.channel=Number(cmd.dataset.channel);await api(`/api/devices/${encodeURIComponent(cmd.dataset.id)}/command`,{method:'POST',body:JSON.stringify(body)});await refreshLiveAfterControl();toast('控制命令已发送','success')}catch(err){toast(err.message,'error')}finally{cmd.disabled=false}return;}
+  const cmd=e.target.closest('[data-command]'); if(cmd){
+    const device=state.devices.find(d=>d.id===cmd.dataset.id);
+    const channel=cmd.dataset.channel===undefined?undefined:Number(cmd.dataset.channel);
+    const pendingKey=`${cmd.dataset.id}:${channel===undefined?'default':channel}`;
+    if(pendingDeviceCommands.has(pendingKey))return;
+    pendingDeviceCommands.add(pendingKey);
+    cmd.disabled=true;
+    const channelState=channel===undefined?device?.power:asArray(device?.channels).find(ch=>Number(ch.outlet)===channel)?.power;
+    const desired=cmd.dataset.command==='turn_on'?true:cmd.dataset.command==='turn_off'?false:!Boolean(channelState);
+    const previous=device?{power:device.power,channels:asArray(device.channels).map(ch=>({...ch})),attributes:asArray(device.attributes).map(a=>({...a})),online:device.online,lastSeen:device.lastSeen}:null;
+    if(device){updateLocalCommandPower(device,desired,channel);renderDevices();updateOverviewLiveCounters();}
+    try{
+      const body={command:cmd.dataset.command};if(channel!==undefined)body.channel=channel;
+      const result=await api(`/api/devices/${encodeURIComponent(cmd.dataset.id)}/command`,{method:'POST',body:JSON.stringify(body)});
+      applyCommandDeviceSnapshot(result);
+      // The next live delta reconciles any provider-side state correction.
+      void refreshLiveAfterControl();
+      toast('控制命令已发送','success');
+    }catch(err){
+      if(device&&previous){Object.assign(device,previous);renderDevices();updateOverviewLiveCounters();}
+      toast(err.message,'error');
+    }finally{
+      pendingDeviceCommands.delete(pendingKey);
+      renderDevices();
+      cmd.disabled=false;
+    }
+    return;
+  }
   const copyAPI=e.target.closest('[data-copy-device-api]'); if(copyAPI){const device=state.devices.find(d=>d.id===copyAPI.dataset.copyDeviceApi);if(!device){toast('设备已不存在，请刷新列表','error');return;}try{await copyText(buildDeviceAPIText(device));toast('设备 API 请求示例已复制','success')}catch(err){toast(err.message,'error')}return;}
   const deleteDevice=e.target.closest('[data-delete-device]'); if(deleteDevice){const device=state.devices.find(d=>d.id===deleteDevice.dataset.deleteDevice);if(!device){toast('设备已不存在，请刷新列表','error');return;}const ok=confirm(`确定永久删除“${device.name}”？普通设备同步不会重新添加；删除品牌账号并重新登录后，可以重新同步恢复。`);if(!ok)return;deleteDevice.disabled=true;try{await api(`/api/devices/${encodeURIComponent(device.id)}`,{method:'DELETE'});state.devices=state.devices.filter(d=>d.id!==device.id);renderDevices();toast('设备已删除；重新登录品牌账号后可恢复','success')}catch(err){toast(err.message,'error')}finally{deleteDevice.disabled=false}return;}
   const prop=e.target.closest('[data-miot-property]'); if(prop){prop.disabled=true;try{const value=prop.dataset.value==='true';await api(`/api/v1/devices/${encodeURIComponent(prop.dataset.id)}/property`,{method:'POST',body:JSON.stringify({siid:Number(prop.dataset.siid),piid:Number(prop.dataset.piid),value})});await refreshLiveAfterControl();toast('MIoT 属性写入成功','success')}catch(err){toast(err.message,'error')}finally{prop.disabled=false}return;}

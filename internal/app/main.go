@@ -34,7 +34,7 @@ var webFiles embed.FS
 // Build metadata is injected by Makefile from the current Git repository.
 // A source ZIP without .git metadata intentionally reports commit count 0.
 var (
-	version     = "0.2.0"
+	version     = "0.2.22-source"
 	buildDate   = "source"
 	commitCount = "0"
 	gitHash     = ""
@@ -122,6 +122,7 @@ type Device struct {
 	ProviderGroup string            `json:"providerGroup,omitempty"`
 	CreatedAt     time.Time         `json:"createdAt"`
 	StateRead     bool              `json:"-"` // true only when the provider returned a fresh live-state response.
+	StateIssue    string            `json:"-"` // transient provider diagnostic; never persisted or returned to clients.
 }
 
 type Account struct {
@@ -172,10 +173,11 @@ type diskState struct {
 }
 
 type Store struct {
-	mu           sync.RWMutex
-	path         string
-	data         diskState
-	liveRevision uint64 // changes only when device/live state changes.
+	mu             sync.RWMutex
+	path           string
+	data           diskState
+	liveRevision   uint64               // changes only when device/live state changes.
+	powerCommandAt map[string]time.Time // guards optimistic Xiaomi state from older in-flight polls.
 }
 
 func newID() string {
@@ -190,7 +192,7 @@ func newStore(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, err
 	}
-	s := &Store{path: filepath.Join(dir, "gohome.json"), liveRevision: 1}
+	s := &Store{path: filepath.Join(dir, "gohome.json"), liveRevision: 1, powerCommandAt: make(map[string]time.Time)}
 	b, err := os.ReadFile(s.path)
 	if err == nil {
 		if err := json.Unmarshal(b, &s.data); err != nil {
@@ -221,6 +223,18 @@ func newStore(dir string) (*Store, error) {
 		removedDemo := 0
 		changed := false
 		for _, d := range s.data.Devices {
+			if d.Protocol == "xiaomi-cloud" && strings.EqualFold(strings.TrimSpace(d.Model), "chuangmi.plug.m3") {
+				// Persisted M3 states came from older releases that conflated the
+				// outlet relay (2/1) with the indicator LED (3/1). Never trust that
+				// cached projection after an upgrade: preserve credentials and
+				// telemetry, but force a fresh read before showing ON/OFF again.
+				before := d
+				d.Power = nil
+				sanitizeM3PowerProjection(&d)
+				if !reflect.DeepEqual(before, d) {
+					changed = true
+				}
+			}
 			if d.Demo || d.Protocol == "demo" || strings.HasPrefix(d.ID, "demo-") {
 				removedDemo++
 				changed = true
@@ -378,12 +392,76 @@ func (s *Store) putDevice(d Device) error {
 	return nil
 }
 
+// setDevicePowerState updates only the primary relay projection after Xiaomi
+// accepts a command. It records the command timestamp so a provider poll that
+// started before the click cannot later overwrite this optimistic state.
+func (s *Store) setDevicePowerState(id string, enabled bool, siid, piid int) (Device, error) {
+	s.mu.Lock()
+	found := false
+	for i := range s.data.Devices {
+		d := &s.data.Devices[i]
+		if d.ID != id {
+			continue
+		}
+		d.Power = cloneBool(&enabled)
+		d.Online = true
+		d.LastSeen = time.Now()
+		if s.powerCommandAt == nil {
+			s.powerCommandAt = make(map[string]time.Time)
+		}
+		s.powerCommandAt[id] = time.Now()
+		if strings.EqualFold(strings.TrimSpace(d.Model), "chuangmi.plug.m3") {
+			sanitizeM3PowerProjection(d)
+		} else {
+			setDevicePowerAttribute(d, enabled)
+		}
+		for index := range d.Controls {
+			control := &d.Controls[index]
+			if control.Kind == "property" && control.SIID == siid && control.PIID == piid {
+				control.Value = enabled
+			}
+		}
+		d.Value = summarizeDeviceAttributes(d)
+		found = true
+		break
+	}
+	if !found {
+		s.mu.Unlock()
+		return Device{}, os.ErrNotExist
+	}
+	if err := s.saveLocked(); err != nil {
+		s.mu.Unlock()
+		return Device{}, err
+	}
+	s.liveRevision++
+	s.mu.Unlock()
+	for _, d := range s.snapshot().Devices {
+		if d.ID == id {
+			return d, nil
+		}
+	}
+	return Device{}, os.ErrNotExist
+}
+
 // refreshDeviceStates updates only the live snapshot for devices that are
 // already imported. It deliberately does not add newly discovered devices or
 // resurrect user-hidden devices; those remain the job of explicit account sync.
 func (s *Store) refreshDeviceStates(accountID string, incoming []Device) (int, error) {
+	return s.refreshDeviceStatesSince(accountID, incoming, time.Now())
+}
+
+// refreshDeviceStatesSince applies provider data only when its request began
+// after the latest accepted Xiaomi power command. A request already in flight
+// before a click may return stale ON/OFF data several seconds later; it must
+// never overwrite the optimistic command state. The next poll started after
+// the command is allowed to reconcile the physical state, matching eWeLink's
+// command-then-periodic-refresh behavior.
+func (s *Store) refreshDeviceStatesSince(accountID string, incoming []Device, pollStartedAt time.Time) (int, error) {
 	if len(incoming) == 0 {
 		return 0, nil
+	}
+	if pollStartedAt.IsZero() {
+		pollStartedAt = time.Now()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -397,23 +475,74 @@ func (s *Store) refreshDeviceStates(accountID string, incoming []Device) (int, e
 			}
 			before := *current
 			current.Online = remote.Online
+			// Ignore any snapshot whose request began before the most recent
+			// accepted Xiaomi command. The provider can take several seconds to
+			// answer; a late old response is not a new physical-state confirmation.
+			stalePowerSnapshot := false
+			if current.Protocol == "xiaomi-cloud" && s.powerCommandAt != nil {
+				if commandAt, ok := s.powerCommandAt[current.ID]; ok {
+					if pollStartedAt.Before(commandAt) {
+						stalePowerSnapshot = true
+					} else {
+						delete(s.powerCommandAt, current.ID)
+					}
+				}
+			}
 			// When an online device was queried but the provider did not return a
 			// usable switch value, clear the old value instead of presenting it as
-			// current. Offline devices keep their last-known value for context.
-			if remote.Online {
-				current.Power = cloneBool(remote.Power)
-				current.Channels = cloneDeviceChannels(remote.Channels)
-				if remote.StateRead {
-					current.Attributes = append([]DeviceAttribute{}, remote.Attributes...)
-					current.Value = remote.Value
+			// current. Do not do that for an older request superseded by a command.
+			if !stalePowerSnapshot {
+				if remote.Online {
+					current.Power = cloneBool(remote.Power)
+					current.Channels = cloneDeviceChannels(remote.Channels)
+					if remote.StateRead {
+						current.Attributes = append([]DeviceAttribute{}, remote.Attributes...)
+						current.Value = remote.Value
+					} else if current.Protocol == "xiaomi-cloud" {
+						// Never leave an old Xiaomi power projection visible if this poll
+						// did not return any usable fresh property value. M3 uses the
+						// model-aware sanitizer below so the indicator stays independent.
+						if !strings.EqualFold(strings.TrimSpace(current.Model), "chuangmi.plug.m3") {
+							current.Attributes = withoutPrimaryPowerAttributes(current.Attributes)
+						}
+						current.Value = summarizeDeviceAttributes(current)
+					}
+				} else if remote.StateRead {
+					current.Power = cloneBool(remote.Power)
+					current.Channels = cloneDeviceChannels(remote.Channels)
 				}
-			} else if remote.StateRead {
-				current.Power = cloneBool(remote.Power)
-				current.Channels = cloneDeviceChannels(remote.Channels)
+				if len(remote.Controls) > 0 {
+					current.Controls = mergeDeviceControls(current.Controls, remote.Controls)
+					current.CanControl = remote.CanControl
+				}
 			}
-			if len(remote.Controls) > 0 {
-				current.Controls = mergeDeviceControls(current.Controls, remote.Controls)
-				current.CanControl = remote.CanControl
+			if current.Protocol == "xiaomi-cloud" && !stalePowerSnapshot {
+				// mergeDeviceControls deliberately retains old values for settings
+				// that were not returned. The main relay is different: a missing
+				// fresh value must clear its previous ON/OFF presentation.
+				if powerControl, ok := findXiaomiPowerControl(*current); ok {
+					for controlIndex := range current.Controls {
+						control := &current.Controls[controlIndex]
+						if control.Kind == "property" && control.SIID == powerControl.SIID && control.PIID == powerControl.PIID {
+							if current.Power == nil {
+								control.Value = nil
+							} else {
+								control.Value = *current.Power
+							}
+						}
+					}
+				}
+			}
+			if current.Protocol == "xiaomi-cloud" && strings.EqualFold(strings.TrimSpace(current.Model), "chuangmi.plug.m3") {
+				// The UI's switch, summary and attribute row must all be projections
+				// of the same exact relay property (SIID 2 / PIID 1). The LED's
+				// boolean value is kept only as its own indicator-light attribute.
+				if !stalePowerSnapshot {
+					if !remote.StateRead || !remote.Online {
+						current.Power = nil
+					}
+					sanitizeM3PowerProjection(current)
+				}
 			}
 			if remote.Energy != nil {
 				energy := *remote.Energy
@@ -454,6 +583,73 @@ func cloneBool(value *bool) *bool {
 	}
 	copy := *value
 	return &copy
+}
+
+// withoutPrimaryPowerAttributes removes stale or ambiguous relay labels while
+// preserving unrelated telemetry such as temperature and the indicator LED.
+func withoutPrimaryPowerAttributes(attributes []DeviceAttribute) []DeviceAttribute {
+	out := make([]DeviceAttribute, 0, len(attributes))
+	for _, attribute := range attributes {
+		if strings.EqualFold(strings.TrimSpace(attribute.Key), "on") || strings.TrimSpace(attribute.Label) == "开关状态" || strings.TrimSpace(attribute.Label) == "电源开关" {
+			continue
+		}
+		out = append(out, attribute)
+	}
+	return out
+}
+
+// clearAccountPowerStates prevents a failed Xiaomi cloud read from presenting
+// yesterday's cached ON value as a live device state. It keeps the account,
+// tokens, controls and non-power telemetry intact.
+func (s *Store) clearAccountPowerStates(accountID string) (int, error) {
+	return s.clearAccountPowerStatesSince(accountID, time.Now())
+}
+
+func (s *Store) clearAccountPowerStatesSince(accountID string, pollStartedAt time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := 0
+	for index := range s.data.Devices {
+		device := &s.data.Devices[index]
+		if device.AccountID != accountID || device.Protocol != "xiaomi-cloud" {
+			continue
+		}
+		if commandAt, ok := s.powerCommandAt[device.ID]; ok {
+			if pollStartedAt.Before(commandAt) {
+				// An older in-flight request failed after a new click. Its failure
+				// must not clear the optimistic state produced by that command.
+				continue
+			}
+			delete(s.powerCommandAt, device.ID)
+		}
+		before := *device
+		device.Power = nil
+		if strings.EqualFold(strings.TrimSpace(device.Model), "chuangmi.plug.m3") {
+			sanitizeM3PowerProjection(device)
+		} else {
+			device.Attributes = withoutPrimaryPowerAttributes(device.Attributes)
+		}
+		if control, ok := findXiaomiPowerControl(*device); ok {
+			for controlIndex := range device.Controls {
+				item := &device.Controls[controlIndex]
+				if item.Kind == "property" && item.SIID == control.SIID && item.PIID == control.PIID {
+					item.Value = nil
+				}
+			}
+		}
+		device.Value = summarizeDeviceAttributes(device)
+		if !reflect.DeepEqual(before, *device) {
+			changed++
+		}
+	}
+	if changed == 0 {
+		return 0, nil
+	}
+	if err := s.saveLocked(); err != nil {
+		return changed, err
+	}
+	s.liveRevision++
+	return changed, nil
 }
 
 func mergeDeviceChannels(old, incoming []DeviceChannel) []DeviceChannel {
@@ -934,7 +1130,8 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if device.Protocol == "xiaomi-cloud" && device.AccountID != "" {
-		if !device.CanControl {
+		isKnownM3Relay := strings.EqualFold(strings.TrimSpace(device.Model), "chuangmi.plug.m3")
+		if !device.CanControl && !isKnownM3Relay {
 			fail(w, http.StatusNotImplemented, "该小米设备没有发现可写属性或可调用动作（原有开关属性：没有识别到可写开关属性）；请重新同步 MIoT 规格")
 			return
 		}
@@ -963,29 +1160,46 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusBadRequest, "小米设备仅支持 turn_on、turn_off、toggle")
 			return
 		}
-		var controlErr error
-		if powerControl, ok := findXiaomiPowerControl(*device); ok {
-			controlErr = xiaomiSetMIoTProperty(r.Context(), secret, device.RemoteID, powerControl.SIID, powerControl.PIID, command == "turn_on")
-		} else if len(device.Controls) == 0 {
-			// Compatibility path for device records created before capabilities were persisted.
-			controlErr = xiaomiCommandDevice(r.Context(), secret, device.RemoteID, device.Model, command)
-		} else {
-			controlErr = errors.New("该小米设备没有可写的电源开关；请使用设备已发现的属性或动作控制 API")
+		powerControl, hasPowerControl := findXiaomiPowerControl(*device)
+		if !hasPowerControl {
+			typ, specErr := fetchMIoTModelType(r.Context(), device.Model)
+			if specErr == nil && typ != "" {
+				var spec miotSpecDocument
+				spec, specErr = fetchMIoTSpec(r.Context(), typ)
+				if specErr == nil {
+					if writable, ok := xiaomiWritableSwitchForModel(spec, device.Model); ok {
+						powerControl = DeviceControl{Kind: "property", Name: "电源开关", SIID: writable.SIID, PIID: writable.PIID, Format: "bool"}
+						hasPowerControl = true
+					}
+				}
+			}
 		}
+		if !hasPowerControl {
+			fail(w, http.StatusNotImplemented, "该小米设备没有识别到可写的主电源继电器，未发送控制命令")
+			return
+		}
+		controlErr := xiaomiSetMIoTProperty(r.Context(), secret, device.RemoteID, powerControl.SIID, powerControl.PIID, command == "turn_on")
 		if controlErr != nil {
 			a.store.addLog("error", "[小米] 设备控制失败："+sanitizeIntegrationLog(controlErr.Error()))
 			fail(w, http.StatusBadGateway, controlErr.Error())
 			return
 		}
-		value := command == "turn_on"
-		device.Power = &value
-		device.Online = true
-		device.LastSeen = time.Now()
-		if err := a.store.putDevice(*device); err != nil {
-			fail(w, http.StatusInternalServerError, err.Error())
+		// Match eWeLink's responsive behavior: once Xiaomi accepts the set
+		// request, update the local relay projection immediately. Do not block
+		// the button on a second cloud read. A detached read-back verifies the
+		// physical state shortly afterwards and corrects the optimistic value.
+		enabled := command == "turn_on"
+		updated, updateErr := a.store.setDevicePowerState(device.ID, enabled, powerControl.SIID, powerControl.PIID)
+		if updateErr != nil {
+			fail(w, http.StatusInternalServerError, updateErr.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, device)
+		// Match eWeLink: acknowledge the command and keep the optimistic state.
+		// The next page-active provider poll (10s cadence) confirms the physical
+		// relay. Do not issue a fast one-shot read here; Xiaomi may briefly return
+		// its cached pre-command value and make the switch appear to bounce back.
+		_ = updated
+		writeJSON(w, http.StatusOK, updated)
 		return
 	}
 	if device.Protocol == "ewelink-cloud" && device.AccountID != "" {
@@ -1060,7 +1274,7 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if channel == 0 || len(device.Channels) == 0 {
+		if len(device.Channels) <= 1 || channel == 0 {
 			device.Power = &v
 		}
 		device.Online = true
@@ -1083,13 +1297,104 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, d)
 }
+
 func findXiaomiPowerControl(device Device) (DeviceControl, bool) {
+	// chuangmi.plug.m3 has a stable, model-specific relay coordinate. Return
+	// this before consulting persisted controls so an old/stale control cache
+	// cannot accidentally target indicator-light.on (3/1).
+	if strings.EqualFold(strings.TrimSpace(device.Model), "chuangmi.plug.m3") {
+		for _, control := range device.Controls {
+			if control.Kind == "property" && (strings.EqualFold(control.Format, "bool") || strings.EqualFold(control.Format, "boolean")) && control.SIID == 2 && control.PIID == 1 {
+				control.Name = "电源开关"
+				return control, true
+			}
+		}
+		return DeviceControl{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool"}, true
+	}
 	for _, control := range device.Controls {
-		if control.Kind == "property" && control.Format == "bool" && control.SIID > 0 && control.PIID > 0 && control.Name == "电源开关" {
+		if control.Kind == "property" && (strings.EqualFold(control.Format, "bool") || strings.EqualFold(control.Format, "boolean")) && control.SIID > 0 && control.PIID > 0 && control.Name == "电源开关" {
 			return control, true
 		}
 	}
 	return DeviceControl{}, false
+}
+
+func setDevicePowerAttribute(device *Device, enabled bool) {
+	if device == nil {
+		return
+	}
+	device.Power = &enabled
+	if strings.EqualFold(strings.TrimSpace(device.Model), "chuangmi.plug.m3") {
+		sanitizeM3PowerProjection(device)
+		return
+	}
+	value := "关闭"
+	if enabled {
+		value = "开启"
+	}
+	// Collapse legacy duplicate "on" attributes. The physical relay is the
+	// only attribute allowed to use key=on; LEDs use indicator_light.
+	attrs := withoutPrimaryPowerAttributes(device.Attributes)
+	attrs = append(attrs, DeviceAttribute{Key: "on", Label: "开关状态", Value: value})
+	device.Attributes = attrs
+}
+
+// sanitizeM3PowerProjection makes the physical outlet relay (switch.on 2/1)
+// the single source of truth for the device's Power, summary and visible relay
+// attribute. It removes legacy duplicated on rows while preserving the LED.
+// A nil Power means unknown; it must not be rendered as the last known ON.
+func sanitizeM3PowerProjection(device *Device) {
+	if device == nil || !strings.EqualFold(strings.TrimSpace(device.Model), "chuangmi.plug.m3") {
+		return
+	}
+	attrs := make([]DeviceAttribute, 0, len(device.Attributes)+1)
+	for _, attribute := range device.Attributes {
+		key := strings.ToLower(strings.TrimSpace(attribute.Key))
+		if key == "indicator_light" || key == "service_on_3_1" {
+			attribute.Label = "指示灯"
+			attrs = append(attrs, attribute)
+			continue
+		}
+		if key == "on" || strings.TrimSpace(attribute.Label) == "开关状态" || strings.TrimSpace(attribute.Label) == "电源开关" {
+			continue
+		}
+		attrs = append(attrs, attribute)
+	}
+	if device.Power != nil {
+		value := "关闭"
+		if *device.Power {
+			value = "开启"
+		}
+		attrs = append(attrs, DeviceAttribute{Key: "on", Label: "开关状态", Value: value})
+	}
+	device.Attributes = attrs
+	for index := range device.Controls {
+		control := &device.Controls[index]
+		if control.Kind == "property" && control.SIID == 2 && control.PIID == 1 {
+			control.Name = "电源开关"
+			if device.Power == nil {
+				control.Value = nil
+			} else {
+				control.Value = *device.Power
+			}
+		}
+		if control.Kind == "property" && control.SIID == 3 && control.PIID == 1 {
+			control.Name = "指示灯"
+		}
+	}
+	device.Value = summarizeDeviceAttributes(device)
+}
+
+func removeDevicePowerAttribute(device *Device) {
+	if device == nil {
+		return
+	}
+	device.Power = nil
+	if strings.EqualFold(strings.TrimSpace(device.Model), "chuangmi.plug.m3") {
+		sanitizeM3PowerProjection(device)
+		return
+	}
+	device.Attributes = withoutPrimaryPowerAttributes(device.Attributes)
 }
 
 func (a *App) setMIoTProperty(w http.ResponseWriter, r *http.Request) {
@@ -1150,11 +1455,23 @@ func (a *App) setMIoTProperty(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	control.Value = value
-	if control.Name == "电源开关" {
-		if enabled, ok := value.(bool); ok {
-			device.Power = &enabled
+	// The primary relay follows the same optimistic command path as the main
+	// switch: return immediately after Xiaomi accepts prop/set and let the next
+	// page-active provider poll confirm the physical value. An immediate prop/get
+	// can return a cached old state and cause a visible ON/OFF bounce.
+	if primary, ok := findXiaomiPowerControl(*device); ok && primary.SIID == in.SIID && primary.PIID == in.PIID {
+		if enabled, isBool := value.(bool); isBool {
+			updated, updateErr := a.store.setDevicePowerState(device.ID, enabled, in.SIID, in.PIID)
+			if updateErr != nil {
+				fail(w, http.StatusInternalServerError, updateErr.Error())
+				return
+			}
+			a.store.addLog("success", fmt.Sprintf("[小米] %s 主电源命令已发送，等待下一轮状态确认", device.Name))
+			writeJSON(w, http.StatusOK, updated)
+			return
 		}
 	}
+	device.Value = summarizeDeviceAttributes(device)
 	device.LastSeen = time.Now()
 	if err := a.store.putDevice(*device); err != nil {
 		fail(w, http.StatusInternalServerError, err.Error())

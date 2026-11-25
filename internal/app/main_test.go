@@ -325,6 +325,509 @@ func TestMIoTReadRefsKeepSwitchOutOfEnergyMetrics(t *testing.T) {
 	}
 }
 
+func TestChuangmiPlugM3IndicatorDoesNotOverwriteRelayPower(t *testing.T) {
+	// The MIoT specification for chuangmi.plug.m3 exposes two independent
+	// properties named "on": switch.on (SIID 2 / PIID 1) controls the outlet,
+	// while indicator-light.on (SIID 3 / PIID 1) controls only its LED.
+	var spec miotSpecDocument
+	const specJSON = `{
+		"services": [
+			{
+				"iid": 2, "name": "switch", "type": "urn:miot-spec-v2:service:switch:00007802:chuangmi-m3:1",
+				"properties": [
+					{"iid": 1, "name": "on", "description": "Switch Status", "type": "urn:miot-spec-v2:property:bool:00000006:chuangmi-m3:1", "format": "bool", "access": ["read", "write", "notify"]},
+					{"iid": 2, "name": "temperature", "description": "Temperature", "type": "urn:miot-spec-v2:property:float:00000010:chuangmi-m3:1", "format": "float", "unit": "celsius", "access": ["read", "notify"]}
+				]
+			},
+			{
+				"iid": 3, "name": "indicator-light", "type": "urn:miot-spec-v2:service:indicator-light:00007803:chuangmi-m3:1",
+				"properties": [
+					{"iid": 1, "name": "on", "description": "Switch Status", "type": "urn:miot-spec-v2:property:bool:00000006:chuangmi-m3:1", "format": "bool", "access": ["read", "write"]}
+				]
+			}
+		]
+	}`
+	if err := json.Unmarshal([]byte(specJSON), &spec); err != nil {
+		t.Fatal(err)
+	}
+	refs := miotReadDeviceRefs(spec)
+	fields := map[string]string{}
+	for _, ref := range refs {
+		fields[fmt.Sprintf("%d:%d", ref.SIID, ref.PIID)] = ref.Field
+	}
+	if fields["2:1"] != "on" {
+		t.Fatalf("outlet relay switch.on must map to Device.Power, refs=%+v", refs)
+	}
+	if fields["3:1"] != "indicator_light" {
+		t.Fatalf("indicator-light.on must not map to Device.Power, refs=%+v", refs)
+	}
+
+	for _, result := range []string{
+		`[{"siid":2,"piid":1,"code":0,"value":false},{"siid":3,"piid":1,"code":0,"value":true}]`,
+		`[{"siid":3,"piid":1,"code":0,"value":true},{"siid":2,"piid":1,"code":0,"value":false}]`,
+	} {
+		device := Device{RemoteID: "chuangmi-did"}
+		body := []byte(`{"code":0,"result":` + result + `}`)
+		applyMIoTDeviceResult(&device, refs, body)
+		if !device.StateRead {
+			t.Fatal("expected current MIoT properties to be applied")
+		}
+		if device.Power == nil || *device.Power {
+			t.Fatalf("indicator LED must never overwrite actual OFF relay state, device=%+v", device)
+		}
+		foundIndicator := false
+		for _, attr := range device.Attributes {
+			if attr.Key == "indicator_light" && attr.Value == "开启" {
+				foundIndicator = true
+			}
+		}
+		if !foundIndicator {
+			t.Fatalf("indicator-light state should be kept as a separate attribute, attrs=%+v", device.Attributes)
+		}
+	}
+}
+
+func TestChuangmiPlugM3ModelOverrideUsesRelayAndIndicatorEvenWhenServiceNamesAreAmbiguous(t *testing.T) {
+	// Some translated/cached specification payloads lose the indicator service
+	// label. The model-specific SIID/PIID mapping must still keep 2/1 as relay
+	// and 3/1 as the indicator LED.
+	var spec miotSpecDocument
+	const specJSON = `{
+		"services": [
+			{"iid":2,"name":"switch","description":"Switch","type":"urn:miot-spec-v2:service:switch:00007802","properties":[
+				{"iid":1,"name":"on","description":"Switch Status","format":"bool","access":["read","write"]}
+			]},
+			{"iid":3,"name":"switch","description":"Switch","type":"urn:miot-spec-v2:service:switch:00007802","properties":[
+				{"iid":1,"name":"on","description":"Switch Status","format":"bool","access":["read","write"]}
+			]}
+		]
+	}`
+	if err := json.Unmarshal([]byte(specJSON), &spec); err != nil {
+		t.Fatal(err)
+	}
+	refs := miotReadDeviceRefsForModel(spec, "chuangmi.plug.m3")
+	fields := map[string]string{}
+	for _, ref := range refs {
+		fields[fmt.Sprintf("%d:%d", ref.SIID, ref.PIID)] = ref.Field
+	}
+	if fields["2:1"] != "on" || fields["3:1"] != "indicator_light" {
+		t.Fatalf("wrong model-specific mapping: %+v", fields)
+	}
+	for _, result := range []string{
+		`[{"siid":2,"piid":1,"code":0,"value":false},{"siid":3,"piid":1,"code":0,"value":true}]`,
+		`[{"siid":3,"piid":1,"code":0,"value":true},{"siid":2,"piid":1,"code":0,"value":false}]`,
+	} {
+		device := Device{RemoteID: "plug-m3"}
+		applyMIoTDeviceResult(&device, refs, []byte(`{"code":0,"result":`+result+`}`))
+		if device.Power == nil || *device.Power {
+			t.Fatalf("indicator state overwrote outlet relay: %+v", device)
+		}
+		labels := map[string]int{}
+		for _, attr := range device.Attributes {
+			labels[attr.Label]++
+		}
+		if labels["开关状态"] != 1 || labels["指示灯"] != 1 {
+			t.Fatalf("expected one relay and one LED attribute, got %+v", device.Attributes)
+		}
+	}
+}
+
+func TestParseMIoTPowerReadbackUsesExactRelayAndPreservesFalse(t *testing.T) {
+	body := []byte(`{"code":0,"result":[{"did":"did-1","siid":2,"piid":1,"code":0,"value":false},{"did":"did-1","siid":3,"piid":1,"code":0,"value":true}]}`)
+	value, err := parseMIoTPowerPropertyResponse(body, "did-1", 2, 1)
+	if err != nil || value {
+		t.Fatalf("expected relay OFF readback, value=%v err=%v", value, err)
+	}
+	if _, err := parseMIoTPowerPropertyResponse(body, "did-1", 3, 1); err != nil {
+		t.Fatalf("indicator property should parse independently: %v", err)
+	}
+	if _, err := parseMIoTPowerPropertyResponse(body, "wrong-did", 2, 1); err == nil {
+		t.Fatal("must reject a foreign DID")
+	}
+}
+
+func TestFindXiaomiPowerControlForChuangmiM3PrefersRelayOverIndicator(t *testing.T) {
+	device := Device{Model: "chuangmi.plug.m3", Controls: []DeviceControl{
+		{ID: "prop:3:1", Kind: "property", Name: "电源开关", SIID: 3, PIID: 1, Format: "bool"},
+		{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool"},
+	}}
+	control, ok := findXiaomiPowerControl(device)
+	if !ok || control.SIID != 2 || control.PIID != 1 {
+		t.Fatalf("primary relay not selected: %+v ok=%v", control, ok)
+	}
+}
+
+func TestXiaomiWritableSwitchForM3AlwaysUsesPhysicalRelay(t *testing.T) {
+	var spec miotSpecDocument
+	const specJSON = `{"services":[
+		{"iid":3,"name":"indicator-light","properties":[{"iid":1,"name":"on","format":"bool","access":["read","write"]}]},
+		{"iid":2,"name":"switch","properties":[{"iid":1,"name":"on","format":"bool","access":["read","write"]}]}
+	]}`
+	if err := json.Unmarshal([]byte(specJSON), &spec); err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"chuangmi.plug.m3", "CHUANGMI.PLUG.M3", " chuangmi.plug.m3 "} {
+		property, ok := xiaomiWritableSwitchForModel(spec, model)
+		if !ok || property.SIID != 2 || property.PIID != 1 {
+			t.Fatalf("model %q selected non-relay switch: %+v ok=%v", model, property, ok)
+		}
+	}
+}
+
+func TestFindXiaomiPowerControlForM3UsesKnownRelayEvenWithStaleControls(t *testing.T) {
+	device := Device{Model: "chuangmi.plug.m3", Controls: []DeviceControl{
+		{ID: "prop:3:1", Kind: "property", Name: "电源开关", SIID: 3, PIID: 1, Format: "bool"},
+	}}
+	control, ok := findXiaomiPowerControl(device)
+	if !ok || control.SIID != 2 || control.PIID != 1 {
+		t.Fatalf("stale persisted controls must not redirect command to LED: %+v ok=%v", control, ok)
+	}
+}
+
+func TestRefreshM3NoFreshReadClearsStaleRelayAndDuplicateAttributes(t *testing.T) {
+	a := testApp(t)
+	on := true
+	if err := a.store.putDevice(Device{
+		ID: "xiaomi-m3", AccountID: "xiaomi-account", Protocol: "xiaomi-cloud",
+		Model: "chuangmi.plug.m3", Name: "小冰箱", Online: true, CanControl: true, Power: &on,
+		Controls: []DeviceControl{
+			{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool", Value: true},
+			{ID: "prop:3:1", Kind: "property", Name: "电源开关", SIID: 3, PIID: 1, Format: "bool", Value: true},
+		},
+		Attributes: []DeviceAttribute{
+			{Key: "on", Label: "开关状态", Value: "关闭"},
+			{Key: "temperature", Label: "温度", Value: "37", Unit: "°C"},
+			{Key: "on", Label: "开关状态", Value: "开启"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.store.refreshDeviceStates("xiaomi-account", []Device{{ID: "xiaomi-m3", Online: true, StateRead: false}}); err != nil {
+		t.Fatal(err)
+	}
+	got := a.store.snapshot().Devices[0]
+	if got.Power != nil {
+		t.Fatalf("stale ON state must be cleared, got %v", *got.Power)
+	}
+	for _, attribute := range got.Attributes {
+		if attribute.Key == "on" || attribute.Label == "开关状态" {
+			t.Fatalf("stale/ambiguous relay attribute should be removed: %+v", got.Attributes)
+		}
+	}
+	for _, control := range got.Controls {
+		if control.SIID == 2 && control.PIID == 1 && control.Value != nil {
+			t.Fatalf("stale relay control value must be unknown, got %+v", control)
+		}
+		if control.SIID == 3 && control.PIID == 1 && control.Value != true {
+			t.Fatalf("LED setting is independent and should not be modified: %+v", control)
+		}
+	}
+}
+
+func TestRefreshM3FreshRelayOffCanonicalizesDuplicateAttributesAndControl(t *testing.T) {
+	a := testApp(t)
+	on := true
+	if err := a.store.putDevice(Device{
+		ID: "xiaomi-m3-live", AccountID: "xiaomi-account", Protocol: "xiaomi-cloud",
+		Model: "chuangmi.plug.m3", Name: "小冰箱", Online: true, CanControl: true, Power: &on,
+		Controls: []DeviceControl{
+			{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool", Value: true},
+			{ID: "prop:3:1", Kind: "property", Name: "电源开关", SIID: 3, PIID: 1, Format: "bool", Value: true},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	off := false
+	incoming := Device{
+		ID: "xiaomi-m3-live", Online: true, StateRead: true, Power: &off, CanControl: true,
+		Attributes: []DeviceAttribute{
+			{Key: "on", Label: "开关状态", Value: "关闭"},
+			{Key: "indicator_light", Label: "开关状态", Value: "开启"},
+			{Key: "temperature", Label: "温度", Value: "37", Unit: "°C"},
+		},
+		Controls: []DeviceControl{
+			{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool", Value: false},
+			{ID: "prop:3:1", Kind: "property", Name: "电源开关", SIID: 3, PIID: 1, Format: "bool", Value: true},
+		},
+	}
+	if _, err := a.store.refreshDeviceStates("xiaomi-account", []Device{incoming}); err != nil {
+		t.Fatal(err)
+	}
+	got := a.store.snapshot().Devices[0]
+	if got.Power == nil || *got.Power {
+		t.Fatalf("physical relay OFF must be the device power state: %+v", got.Power)
+	}
+	powerRows, ledRows := 0, 0
+	for _, attr := range got.Attributes {
+		switch attr.Key {
+		case "on":
+			powerRows++
+			if attr.Label != "开关状态" || attr.Value != "关闭" {
+				t.Fatalf("relay attribute disagrees with Power=false: %+v", attr)
+			}
+		case "indicator_light":
+			ledRows++
+			if attr.Label != "指示灯" || attr.Value != "开启" {
+				t.Fatalf("indicator must remain separate from relay: %+v", attr)
+			}
+		}
+	}
+	if powerRows != 1 || ledRows != 1 {
+		t.Fatalf("want exactly one relay row and one indicator row, got attrs=%+v", got.Attributes)
+	}
+	for _, control := range got.Controls {
+		if control.SIID == 2 && control.PIID == 1 && control.Value != false {
+			t.Fatalf("main relay control must show OFF: %+v", control)
+		}
+		if control.SIID == 3 && control.PIID == 1 && control.Value != true {
+			t.Fatalf("LED control must remain ON independently: %+v", control)
+		}
+	}
+	if got.Value == "" || !strings.Contains(got.Value, "关闭") {
+		t.Fatalf("device summary must agree with relay OFF: %q", got.Value)
+	}
+}
+
+func TestNewStoreMigratesOldM3PowerRowsButKeepsVaultFiles(t *testing.T) {
+	dir := t.TempDir()
+	on := true
+	legacy := diskState{
+		Devices: []Device{{
+			ID: "xiaomi-m3-legacy", AccountID: "xiaomi-account", Protocol: "xiaomi-cloud",
+			Model: "chuangmi.plug.m3", Name: "小冰箱", Power: &on, Online: true,
+			Attributes: []DeviceAttribute{
+				{Key: "on", Label: "开关状态", Value: "关闭"},
+				{Key: "on", Label: "开关状态", Value: "开启"},
+				{Key: "indicator_light", Label: "开关状态", Value: "开启"},
+				{Key: "temperature", Label: "温度", Value: "37", Unit: "°C"},
+			},
+			Controls: []DeviceControl{
+				{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool", Value: true},
+				{ID: "prop:3:1", Kind: "property", Name: "电源开关", SIID: 3, PIID: 1, Format: "bool", Value: true},
+			},
+		}},
+		Accounts: []Account{{ID: "xiaomi-account", Provider: "xiaomi", Status: "connected", Label: "米家账号"}},
+	}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "gohome.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	vaultFiles := map[string][]byte{
+		"gohome.vault.json":  []byte("encrypted-yesterday-session"),
+		"gohome.vault.key":   []byte("vault-key-keep"),
+		"gohome.session.key": []byte("browser-cookie-key-keep"),
+	}
+	for name, content := range vaultFiles {
+		if err := os.WriteFile(filepath.Join(dir, name), content, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err := newStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := store.snapshot()
+	if len(got.Devices) != 1 || len(got.Accounts) != 1 || got.Accounts[0].ID != "xiaomi-account" {
+		t.Fatalf("migration must keep device and account records: %+v", got)
+	}
+	device := got.Devices[0]
+	if device.Power != nil {
+		t.Fatalf("legacy M3 power must be unknown until a fresh relay read: %v", *device.Power)
+	}
+	for _, attr := range device.Attributes {
+		if attr.Key == "on" || attr.Label == "开关状态" || attr.Label == "电源开关" {
+			t.Fatalf("legacy ambiguous relay row remained after migration: %+v", device.Attributes)
+		}
+		if attr.Key == "indicator_light" && attr.Label != "指示灯" {
+			t.Fatalf("indicator label should be corrected: %+v", attr)
+		}
+	}
+	for _, control := range device.Controls {
+		if control.SIID == 2 && control.PIID == 1 && control.Value != nil {
+			t.Fatalf("legacy main relay control must be unknown: %+v", control)
+		}
+		if control.SIID == 3 && control.PIID == 1 && control.Value != true {
+			t.Fatalf("indicator control should be preserved: %+v", control)
+		}
+	}
+	for name, want := range vaultFiles {
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("migration changed yesterday's %s: got=%q err=%v", name, got, err)
+		}
+	}
+}
+
+func TestImmediateXiaomiPowerUpdateKeepsM3IndicatorIndependent(t *testing.T) {
+	a := testApp(t)
+	on := true
+	ledOn := true
+	if err := a.store.putDevice(Device{
+		ID: "xiaomi-m3-fast", AccountID: "xiaomi-account", RemoteID: "did-m3-fast",
+		Protocol: "xiaomi-cloud", Model: "chuangmi.plug.m3", Online: true, Power: &on,
+		Attributes: []DeviceAttribute{
+			{Key: "on", Label: "开关状态", Value: "开启"},
+			{Key: "indicator_light", Label: "指示灯", Value: "开启"},
+			{Key: "temperature", Label: "温度", Value: "31", Unit: "°C"},
+		},
+		Controls: []DeviceControl{
+			{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool", Value: true},
+			{ID: "prop:3:1", Kind: "property", Name: "指示灯", SIID: 3, PIID: 1, Format: "bool", Value: true},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := a.store.setDevicePowerState("xiaomi-m3-fast", false, 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Power == nil || *updated.Power {
+		t.Fatalf("immediate relay update should be OFF, got %+v", updated.Power)
+	}
+	var relay, indicator, temperature bool
+	for _, attr := range updated.Attributes {
+		switch attr.Key {
+		case "on":
+			relay = attr.Label == "开关状态" && attr.Value == "关闭"
+		case "indicator_light":
+			indicator = attr.Label == "指示灯" && attr.Value == "开启"
+		case "temperature":
+			temperature = attr.Value == "31"
+		}
+	}
+	if !relay || !indicator || !temperature {
+		t.Fatalf("relay update must preserve separate LED and telemetry: %+v", updated.Attributes)
+	}
+	for _, control := range updated.Controls {
+		if control.SIID == 2 && control.PIID == 1 && control.Value != false {
+			t.Fatalf("primary relay control should update immediately: %+v", control)
+		}
+		if control.SIID == 3 && control.PIID == 1 && control.Value != ledOn {
+			t.Fatalf("indicator control value must remain independent: %+v", control)
+		}
+	}
+}
+
+func TestOlderXiaomiPollCannotRevertOptimisticCommand(t *testing.T) {
+	a := testApp(t)
+	on := true
+	if err := a.store.putDevice(Device{
+		ID: "xiaomi-command-hold", AccountID: "xiaomi-account", RemoteID: "did-command-hold",
+		Protocol: "xiaomi-cloud", Model: "chuangmi.plug.m3", Online: true, Power: &on,
+		Attributes: []DeviceAttribute{{Key: "on", Label: "开关状态", Value: "开启"}},
+		Controls:   []DeviceControl{{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool", Value: true}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The accepted command should be reflected immediately and protected from
+	// a provider request that was started before the click.
+	updated, err := a.store.setDevicePowerState("xiaomi-command-hold", false, 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Power == nil || *updated.Power {
+		t.Fatalf("optimistic OFF was not stored: %+v", updated.Power)
+	}
+
+	stalePollStartedAt := time.Now().Add(-time.Second)
+	staleOn := true
+	if _, err := a.store.refreshDeviceStatesSince("xiaomi-account", []Device{{
+		ID: "xiaomi-command-hold", Online: true, StateRead: true, Power: &staleOn,
+		Attributes: []DeviceAttribute{{Key: "on", Label: "开关状态", Value: "开启"}},
+		Controls:   []DeviceControl{{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool", Value: true}},
+	}}, stalePollStartedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.store.clearAccountPowerStatesSince("xiaomi-account", stalePollStartedAt); err != nil {
+		t.Fatal(err)
+	}
+	got := a.store.snapshot().Devices[0]
+	if got.Power == nil || *got.Power {
+		t.Fatalf("older poll or its failure reverted the command state: %+v", got.Power)
+	}
+	for _, control := range got.Controls {
+		if control.SIID == 2 && control.PIID == 1 && control.Value != false {
+			t.Fatalf("older poll reverted the main relay control value: %+v", control)
+		}
+	}
+
+	// A new poll started after the command is the physical-state confirmation
+	// and is therefore allowed to correct an optimistic value.
+	freshPollStartedAt := time.Now().Add(time.Millisecond)
+	if _, err := a.store.refreshDeviceStatesSince("xiaomi-account", []Device{{
+		ID: "xiaomi-command-hold", Online: true, StateRead: true, Power: &staleOn,
+		Attributes: []DeviceAttribute{{Key: "on", Label: "开关状态", Value: "开启"}},
+		Controls:   []DeviceControl{{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool", Value: true}},
+	}}, freshPollStartedAt); err != nil {
+		t.Fatal(err)
+	}
+	got = a.store.snapshot().Devices[0]
+	if got.Power == nil || !*got.Power {
+		t.Fatalf("fresh post-command poll should confirm actual ON state: %+v", got.Power)
+	}
+	if _, pending := a.store.powerCommandAt["xiaomi-command-hold"]; pending {
+		t.Fatal("fresh post-command poll should clear the optimistic-command guard")
+	}
+}
+
+func TestClearAccountPowerStatesKeepsAccountAndNonPowerTelemetry(t *testing.T) {
+	a := testApp(t)
+	on := true
+	if err := a.store.putDevice(Device{
+		ID: "xiaomi-stale", AccountID: "xiaomi-account", Protocol: "xiaomi-cloud",
+		Model: "chuangmi.plug.m3", Online: true, Power: &on,
+		Attributes: []DeviceAttribute{{Key: "on", Label: "开关状态", Value: "开启"}, {Key: "temperature", Label: "温度", Value: "37", Unit: "°C"}},
+		Controls:   []DeviceControl{{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool", Value: true}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := a.store.clearAccountPowerStates("xiaomi-account"); err != nil || changed != 1 {
+		t.Fatalf("clearAccountPowerStates changed=%d err=%v", changed, err)
+	}
+	got := a.store.snapshot().Devices[0]
+	if got.Power != nil || len(got.Attributes) != 1 || got.Attributes[0].Key != "temperature" {
+		t.Fatalf("power cache should be unknown while temperature remains: %+v", got)
+	}
+	if len(got.Controls) != 1 || got.Controls[0].Value != nil {
+		t.Fatalf("primary power control cache should be cleared: %+v", got.Controls)
+	}
+}
+
+func TestPageLeaseReleaseDoesNotCancelInFlightCloudRequest(t *testing.T) {
+	m := &integrationManager{pageLeases: map[string]time.Time{"web-tab-00000001": time.Now().Add(time.Minute)}}
+	requestCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.pollRunning = true
+	m.pollCancel = cancel
+	if got := m.updatePageActivity("web-tab-00000001", false); got != 0 {
+		t.Fatalf("expected no active pages, got %d", got)
+	}
+	if err := requestCtx.Err(); err != nil {
+		t.Fatalf("page lease release canceled an in-flight Xiaomi request: %v", err)
+	}
+	if got := m.activePageCount(time.Now()); got != 0 {
+		t.Fatalf("expected no active page leases, got %d", got)
+	}
+	if err := requestCtx.Err(); err != nil {
+		t.Fatalf("lease expiry canceled the active request: %v", err)
+	}
+}
+
+func TestProviderPollCancellationIsNotReportedAsSyncFailure(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+	if parent.Err() == nil || !errors.Is(parent.Err(), context.Canceled) {
+		t.Fatalf("expected canceled page poll context, got %v", parent.Err())
+	}
+	// The poller now returns immediately on context cancellation and does not
+	// create a provider warning; canceled page leases are normal lifecycle events.
+}
+
 func TestApplyMIoTDeviceResultUpdatesExternalOffValue(t *testing.T) {
 	device := Device{RemoteID: "did-live-1"}
 	refs := []miotDevicePropertyRef{{SIID: 2, PIID: 1, Field: "on", Label: "开关状态", Format: "bool"}}
@@ -335,6 +838,97 @@ func TestApplyMIoTDeviceResultUpdatesExternalOffValue(t *testing.T) {
 	}
 	if device.Power == nil || *device.Power {
 		t.Fatalf("MIoT OFF value was not applied: %+v", device.Power)
+	}
+}
+
+func TestApplyM3NumericSwitchValuesNormalizeToBooleanAndLabels(t *testing.T) {
+	device := Device{
+		RemoteID: "did-m3-numeric",
+		Model:    "chuangmi.plug.m3",
+		Controls: []DeviceControl{
+			{ID: "prop:2:1", Kind: "property", Name: "电源开关", SIID: 2, PIID: 1, Format: "bool"},
+			{ID: "prop:3:1", Kind: "property", Name: "指示灯", SIID: 3, PIID: 1, Format: "bool"},
+		},
+	}
+	refs := []miotDevicePropertyRef{
+		{SIID: 2, PIID: 1, Field: "on", Label: "开关状态", Format: "bool"},
+		{SIID: 3, PIID: 1, Field: "indicator_light", Label: "指示灯", Format: "bool"},
+	}
+	body := []byte(`{"code":0,"result":[{"did":"did-m3-numeric","siid":3,"piid":1,"code":0,"value":1},{"did":"did-m3-numeric","siid":2,"piid":1,"code":0,"value":0}]}`)
+	applyMIoTDeviceResult(&device, refs, body)
+	if device.Power == nil || *device.Power {
+		t.Fatalf("numeric relay value 0 must normalize to OFF: %+v", device.Power)
+	}
+	if got := miotFormatAttribute(refs[0], float64(0)); got != "关闭" {
+		t.Fatalf("numeric relay attribute should display 关闭, got %q", got)
+	}
+	if got := miotFormatAttribute(refs[1], float64(1)); got != "开启" {
+		t.Fatalf("numeric indicator attribute should display 开启, got %q", got)
+	}
+	for _, control := range device.Controls {
+		if control.SIID == 2 && control.PIID == 1 && control.Value != false {
+			t.Fatalf("relay control value must be bool false, got %#v", control.Value)
+		}
+		if control.SIID == 3 && control.PIID == 1 && control.Value != true {
+			t.Fatalf("indicator control value must be bool true, got %#v", control.Value)
+		}
+	}
+}
+
+func TestXiaomiBuildGetPropertiesPayloadKeepsOneDID(t *testing.T) {
+	refs := []miotDevicePropertyRef{
+		{SIID: 2, PIID: 1, Field: "on"},
+		{SIID: 3, PIID: 4, Field: "temperature"},
+		{SIID: 2, PIID: 1, Field: "duplicate"},
+	}
+	body, err := xiaomiBuildGetPropertiesPayload("did-single-device", refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Params []struct {
+			DID  string `json:"did"`
+			SIID int    `json:"siid"`
+			PIID int    `json:"piid"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Params) != 2 {
+		t.Fatalf("expected two unique properties, got %+v", payload.Params)
+	}
+	for _, item := range payload.Params {
+		if item.DID != "did-single-device" {
+			t.Fatalf("cross-device DID leaked into request: %+v", item)
+		}
+	}
+	if _, err := xiaomiBuildGetPropertiesPayload("", refs); err == nil {
+		t.Fatal("missing DID must be rejected")
+	}
+}
+
+func TestMIoTSingleDeviceResponseMayOmitDID(t *testing.T) {
+	device := Device{RemoteID: "did-single-device"}
+	refs := []miotDevicePropertyRef{{SIID: 2, PIID: 1, Field: "on", Label: "开关状态", Format: "bool"}}
+	// Legacy xiaomiio prop/get responses may omit DID when the request contains
+	// properties for only one device. Single-DID isolation makes this safe.
+	body := []byte(`{"code":0,"result":[{"siid":2,"piid":1,"code":0,"value":false}]}`)
+	applied := applyMIoTDeviceResultForDID(&device, refs, body, false)
+	if applied != 1 || !device.StateRead || device.Power == nil || *device.Power {
+		t.Fatalf("single-device result without DID was not applied: applied=%d device=%+v", applied, device)
+	}
+}
+
+func TestMIoTSingleDeviceResponseRejectsExplicitOtherDID(t *testing.T) {
+	device := Device{RemoteID: "did-target"}
+	refs := []miotDevicePropertyRef{{SIID: 2, PIID: 1, Field: "on", Label: "开关状态", Format: "bool"}}
+	body := []byte(`{"code":0,"result":[{"did":"did-other","siid":2,"piid":1,"code":0,"value":true}]}`)
+	if applied := applyMIoTDeviceResultForDID(&device, refs, body, false); applied != 0 {
+		t.Fatalf("explicit foreign DID must never be applied, got %d", applied)
+	}
+	if device.StateRead || device.Power != nil {
+		t.Fatalf("foreign device state leaked: %+v", device)
 	}
 }
 
@@ -1249,6 +1843,13 @@ func TestMIoTGenericWhEnergyMapsToLifetimeCounter(t *testing.T) {
 	field, _ = miotEnergyPropertyField("power", "Power switch", "bool", "")
 	if field != "" {
 		t.Fatalf("boolean switch must not map to power meter: %q", field)
+	}
+}
+
+func TestMIoTModelIndexLookupIsCaseInsensitive(t *testing.T) {
+	models := map[string]string{"xiaomi.plug.mcn02": "urn:miot-spec-v2:device:plug:0000A001:1"}
+	if got := lookupMIoTModelType(models, "Xiaomi.Plug.MCN02"); got != models["xiaomi.plug.mcn02"] {
+		t.Fatalf("case-insensitive model lookup failed: %q", got)
 	}
 }
 
