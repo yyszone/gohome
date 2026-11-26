@@ -30,7 +30,7 @@ func testApp(t *testing.T) *App {
 	a := newApp(s)
 	// Endpoint tests use an explicit auth bypass. Persistent cookie auth is
 	// covered separately in TestPersistentCookieAuth and is always enabled in
-	// production; administrator credentials are fixed in source code.
+	// production; administrator credentials are generated per test data directory.
 	a.authDisabled = true
 	return a
 }
@@ -46,7 +46,7 @@ func TestPersistentCookieAuth(t *testing.T) {
 		t.Fatalf("unauthenticated status=%d want=%d", unauthenticated.Code, http.StatusUnauthorized)
 	}
 
-	loginBody := `{"username":"admin","password":"123456"}`
+	loginBody := fmt.Sprintf(`{"username":"admin","password":%q}`, a.adminPassword)
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(loginBody))
 	loginReq.RemoteAddr = "192.0.2.10:12345"
 	loginReq.Header.Set("Content-Type", "application/json")
@@ -82,7 +82,7 @@ func TestPersistentCookieAuth(t *testing.T) {
 func TestPersistentCookieAuthRejectsWrongPassword(t *testing.T) {
 	a := testApp(t)
 	a.authDisabled = false
-	for _, credentials := range []string{`{"username":"wrong","password":"123456"}`, `{"username":"admin","password":"wrong"}`} {
+	for _, credentials := range []string{fmt.Sprintf(`{"username":"wrong","password":%q}`, a.adminPassword), `{"username":"admin","password":"wrong"}`} {
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(credentials))
 		req.RemoteAddr = "192.0.2.11:12345"
 		resp := httptest.NewRecorder()
@@ -2257,7 +2257,7 @@ func TestXiaomiWritableSwitchCapability(t *testing.T) {
 }
 
 func TestMIoTDisplayColorTemperatureAndCategory(t *testing.T) {
-	field, label, unit, _ := miotDisplayProperty("color-temperature", "", "light", "kelvin")
+	field, label, unit, _ := miotDisplayProperty("color-temperature", "", "light", "", "", "kelvin")
 	if field != "color_temperature" || label != "色温" || unit != "K" {
 		t.Fatalf("color temperature misclassified: %q %q %q", field, label, unit)
 	}
@@ -2773,5 +2773,53 @@ func TestUpdateAccountDisplayNameDoesNotChangeLoginIdentity(t *testing.T) {
 	accounts := a.store.snapshot().Accounts
 	if len(accounts) != 1 || accounts[0].DisplayName != "" || accounts[0].ID != original.ID {
 		t.Fatalf("reset must keep original connected account: %+v", accounts)
+	}
+}
+
+func TestGoHomeBrandAssetsAreServed(t *testing.T) {
+	a := testApp(t)
+	paths := []struct {
+		path        string
+		contentType string
+	}{
+		{path: "/", contentType: "text/html"},
+		{path: "/favicon.svg", contentType: "image/svg+xml"},
+		{path: "/favicon.ico", contentType: "image/vnd.microsoft.icon"},
+		{path: "/favicon-32.png", contentType: "image/png"},
+		{path: "/gohome-logo.png", contentType: "image/png"},
+		{path: "/gohome-icon-192.png", contentType: "image/png"},
+		{path: "/apple-touch-icon.png", contentType: "image/png"},
+		{path: "/site.webmanifest", contentType: "application/manifest+json"},
+		{path: "/theme.css", contentType: "text/css"},
+	}
+	for _, item := range paths {
+		req := httptest.NewRequest(http.MethodGet, item.path, nil)
+		resp := httptest.NewRecorder()
+		a.ServeHTTP(resp, req)
+		if resp.Code != http.StatusOK {
+			t.Errorf("GET %s status=%d body=%s", item.path, resp.Code, resp.Body.String())
+			continue
+		}
+		if resp.Body.Len() == 0 {
+			t.Errorf("GET %s returned an empty body", item.path)
+		}
+		if got := resp.Header().Get("Content-Type"); !strings.HasPrefix(got, item.contentType) {
+			t.Errorf("GET %s content-type=%q want prefix %q", item.path, got, item.contentType)
+		}
+		cache := resp.Header().Get("Cache-Control")
+		if item.path == "/" && cache != "no-cache" {
+			t.Errorf("index Cache-Control=%q want no-cache", cache)
+		}
+		if item.path != "/" && !strings.Contains(cache, "max-age=86400") {
+			t.Errorf("asset %s Cache-Control=%q want 24h cache", item.path, cache)
+		}
+		if item.path == "/" {
+			body := resp.Body.String()
+			for _, marker := range []string{"/favicon.svg", "/site.webmanifest", "/theme.css?v=0.2.28", "/gohome-logo.png"} {
+				if !strings.Contains(body, marker) {
+					t.Errorf("index is missing asset reference %q", marker)
+				}
+			}
+		}
 	}
 }

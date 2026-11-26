@@ -3,15 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#101827" />
+  <meta name="theme-color" content="#071b2c" />
+  <meta name="color-scheme" content="light" />
+  <link rel="icon" href="/favicon.svg?v=0.2.28" type="image/svg+xml" />
+  <link rel="icon" href="/favicon-16.png?v=0.2.28" type="image/png" sizes="16x16" />
+  <link rel="icon" href="/favicon-32.png?v=0.2.28" type="image/png" sizes="32x32" />
+  <link rel="icon" href="/favicon-48.png?v=0.2.28" type="image/png" sizes="48x48" />
+  <link rel="shortcut icon" href="/favicon.ico?v=0.2.28" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=0.2.28" />
+  <link rel="manifest" href="/site.webmanifest?v=0.2.28" />
   <meta name="description" content="GoHome 轻量级家庭设备管理中心" />
-  <title>GoHome · 智能家庭</title>
-  <link rel="stylesheet" href="/app.css" />
+  <title>GoHome · 智能家庭控制中心</title>
+  <link rel="stylesheet" href="/app.css?v=0.2.28" />
+  <link rel="stylesheet" href="/theme.css?v=0.2.28" />
 </head>
 <body>
 <div id="login-screen" class="login-screen">
   <section class="login-card" aria-labelledby="login-title">
-    <div class="login-brand"><div class="brand-mark"><span></span><span></span><span></span></div><div><strong>GoHome</strong><small>SMART HOME CENTER</small></div></div>
+    <div class="login-brand"><img class="brand-logo" src="/gohome-logo.png?v=0.2.28" width="48" height="48" alt="GoHome" /><div><strong>GoHome</strong><small>SMART HOME CENTER</small></div></div>
     <div class="eyebrow">LOCAL HOME CONTROL</div>
     <h1 id="login-title">欢迎回来</h1>
     <p class="login-subtitle">登录后管理你的米家、易微联和局域网设备。</p>
@@ -21,13 +30,13 @@
       <p id="login-error" class="login-error" hidden></p>
       <button class="btn btn-primary login-submit" type="submit">登录 GoHome</button>
     </form>
-    <small class="login-security">登录状态保存在本机 Cookie 中。请仅在可信局域网使用，不要将管理端口直接暴露到公网。</small>
+    <small class="login-security">首次启动的管理员密码已随机生成，请在服务端执行 <code>cat data/gohome.admin.password</code> 读取。登录状态保存在长期有效的 HttpOnly Cookie 中；请仅在可信局域网使用，不要将管理端口直接暴露到公网。</small>
   </section>
 </div>
 <div id="app-shell" class="app-shell">
   <aside class="sidebar" id="sidebar">
     <div class="brand-lockup">
-      <div class="brand-mark"><span></span><span></span><span></span></div>
+      <img class="brand-logo" src="/gohome-logo.png?v=0.2.28" width="48" height="48" alt="GoHome" />
       <div><div class="brand-name">GoHome</div><div class="brand-caption">SMART HOME CENTER</div></div>
     </div>
     <div class="side-label">工作区</div>
@@ -49,6 +58,7 @@
       <div class="top-actions">
         <span class="local-chip"><span></span> 本地服务</span>
         <button class="icon-btn" id="refresh-btn" title="刷新数据">↻</button>
+        <button class="btn btn-ghost btn-password" id="password-open" type="button">修改密码</button>
         <button class="btn btn-ghost btn-logout" id="logout-btn" type="button">退出登录</button>
         <div class="avatar">Y</div>
       </div>
@@ -137,7 +147,9 @@
   <div id="account-error-panel" class="account-error-panel" hidden><div><strong>本次操作未完成</strong><p id="account-error-message"></p></div><button type="button" class="btn btn-small btn-outline" id="account-error-copy">复制错误</button></div>
   <div class="modal-actions"><button type="button" class="btn btn-ghost" id="account-cancel">取消</button><button type="submit" class="btn btn-primary" id="account-submit">登录并同步设备</button></div>
 </form></section></div>
+<div class="modal-backdrop" id="camera-source-backdrop" aria-hidden="true"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="camera-source-title"><div class="modal-head"><div><div class="eyebrow">CAMERA PREVIEW</div><h2 id="camera-source-title">配置摄像头视频源</h2><small id="camera-source-name" class="modal-subtitle"></small></div><button class="modal-close" id="camera-source-close" type="button">×</button></div><form id="camera-source-form"><input type="hidden" name="deviceId"><label>视频地址<input name="cameraUrl" type="url" maxlength="2048" placeholder="http://192.168.31.10:8080/video.mjpg" /></label><div class="form-note">浏览器支持 MJPEG、MP4、WebM；HLS（m3u8）取决于浏览器原生支持。小米私有 P2P 和 RTSP 不能直接放入网页播放，需要先通过 go2rtc、MediaMTX 等服务转换为 HLS / MJPEG / HTTP 视频流。留空可移除预览。</div><div class="modal-actions"><button type="button" class="btn btn-ghost" id="camera-source-cancel">取消</button><button type="submit" class="btn btn-primary">保存视频源</button></div></form></section></div>
+<div class="modal-backdrop" id="password-backdrop" aria-hidden="true"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="password-title"><div class="modal-head"><div><div class="eyebrow">ADMIN SECURITY</div><h2 id="password-title">修改管理员密码</h2></div><button class="modal-close" id="password-close" type="button">×</button></div><form id="password-form"><label>当前密码<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>新密码（12–128 个字符）<input name="newPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label><label>确认新密码<input name="confirmPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label><p id="password-error" class="login-error" hidden></p><div class="form-note">修改后会立即使其他浏览器的旧登录 Cookie 失效；当前浏览器会自动保持登录。</div><div class="modal-actions"><button type="button" class="btn btn-ghost" id="password-cancel">取消</button><button type="submit" class="btn btn-primary">确认修改</button></div></form></section></div>
 <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
-<script src="/app.js"></script>
+<script src="/app.js?v=0.2.28" defer></script>
 </body>
 </html>

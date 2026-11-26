@@ -445,3 +445,28 @@
 
 /* Brand account display-name action. */
 .rename-link{border:0;background:none;color:#8179db;font-size:10px;cursor:pointer;padding:6px 2px}.rename-link:hover{color:#5f56c8;text-decoration:underline}.account-buttons{flex-wrap:wrap}
+
+
+/* v0.2.28: camera preview, password management and resilient small screens. */
+.btn-password{white-space:nowrap}
+.login-security code{display:inline-block;padding:1px 4px;border-radius:4px;background:#f0efff;color:#675fc7;font-size:9px}
+.camera-preview{display:grid;gap:5px;margin:10px 0;max-width:560px;min-width:0}
+.camera-preview img,.camera-preview video{display:block;width:100%;max-height:360px;object-fit:contain;background:#111827;border-radius:10px;aspect-ratio:16/9}
+.camera-preview small,.camera-preview-link small,.camera-preview-note{font-size:9px;color:#8d98aa;line-height:1.6}
+.camera-preview-link{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0;padding:9px 11px;border:1px solid #e8ebf2;border-radius:8px;background:#fafbfe}
+.camera-preview-link a{font-size:10px;color:#6d65ce;text-decoration:none;font-weight:700}
+.device-hover-actions .device-camera-source{height:27px;border:1px solid #dfe5f0;border-radius:7px;background:#f7f8ff;color:#6862bd;padding:0 8px;font:600 10px system-ui,sans-serif;cursor:pointer}
+.device-hover-actions .device-camera-source:hover{border-color:#b8b2f0;background:#f2f1ff}
+.modal-subtitle{display:block;margin-top:5px;color:#9aa4b4;font-size:9px}
+@media(max-width:640px){
+  .top-actions{gap:5px}.btn-password{padding:6px 7px;font-size:9px}.btn-logout{padding:6px 7px;font-size:9px}
+  .camera-preview{max-width:100%}.camera-preview img,.camera-preview video{max-height:260px}
+  #all-devices .device-list-item{min-width:0;overflow:hidden}
+  #all-devices .device-list-main{grid-template-columns:34px minmax(0,1fr);gap:8px}
+  #all-devices .device-list-title{min-width:0}
+  #all-devices .device-list-title h3{overflow-wrap:anywhere;white-space:normal}
+  #all-devices .device-hover-actions{max-width:100%;flex-wrap:wrap}
+  #all-devices .device-control-card{padding:10px}
+  #all-devices .device-control-primary{gap:6px}
+  #all-devices .device-control-primary .miot-control-item{max-width:100%;flex-wrap:wrap}
+}

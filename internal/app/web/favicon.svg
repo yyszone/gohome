@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="house" x1="8" y1="9" x2="55" y2="55" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22d3ee"/><stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <linearGradient id="door" x1="27" y1="42" x2="39" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fde047"/><stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="#06172b"/>
+  <path d="M8 30 29 12a5 5 0 0 1 6 0l11 9v-4a3 3 0 0 1 3-3h3a3 3 0 0 1 3 3v12l2 2a4 4 0 0 1-3 7h-2v13a5 5 0 0 1-5 5H17a5 5 0 0 1-5-5V38h-1a4 4 0 0 1-3-8Z" fill="none" stroke="url(#house)" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M23 48V37l9-8 9 8v11" fill="none" stroke="url(#house)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M29 54V45a3 3 0 0 1 6 0v9" fill="none" stroke="url(#door)" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="44" cy="29" r="3.2" fill="#facc15"/>
+</svg>

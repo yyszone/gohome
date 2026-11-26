@@ -17,13 +17,10 @@ import (
 	"time"
 )
 
-// The initial administrator credentials are deliberately built into the
-// application so a first-run install does not depend on shell environment
-// variables. Keep this service on a trusted LAN: this password is shared by
-// every unmodified build.
+// Administrator credentials are generated per installation and stored in
+// data/gohome.admin.password with filesystem mode 0600.
 const (
 	defaultAdminUsername = "admin"
-	defaultAdminPassword = "123456"
 	sessionCookieName    = "gohome_session"
 )
 
@@ -102,14 +99,23 @@ func sessionPayload() []byte { return []byte("gohome-session-v1:" + defaultAdmin
 
 func (a *App) sessionToken() string {
 	payload := sessionPayload()
-	mac := hmac.New(sha256.New, a.authKey)
+	a.authMu.RLock()
+	key := append([]byte(nil), a.authKey...)
+	a.authMu.RUnlock()
+	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write(payload)
 	return base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func (a *App) hasValidSession(r *http.Request) bool {
 	cookie, err := r.Cookie(sessionCookieName)
-	if err != nil || len(a.authKey) != sha256.Size {
+	if err != nil {
+		return false
+	}
+	a.authMu.RLock()
+	key := append([]byte(nil), a.authKey...)
+	a.authMu.RUnlock()
+	if len(key) != sha256.Size {
 		return false
 	}
 	parts := strings.Split(cookie.Value, ".")
@@ -124,7 +130,7 @@ func (a *App) hasValidSession(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	mac := hmac.New(sha256.New, a.authKey)
+	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write(payload)
 	return hmac.Equal(provided, mac.Sum(nil))
 }
@@ -205,7 +211,10 @@ func (a *App) authLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userOK := subtle.ConstantTimeCompare([]byte(in.Username), []byte(defaultAdminUsername)) == 1
-	passOK := subtle.ConstantTimeCompare([]byte(in.Password), []byte(defaultAdminPassword)) == 1
+	a.authMu.RLock()
+	storedPassword := a.adminPassword
+	a.authMu.RUnlock()
+	passOK := subtle.ConstantTimeCompare([]byte(in.Password), []byte(storedPassword)) == 1
 	if !userOK || !passOK {
 		a.recordLoginFailure(ip, time.Now())
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "账号或密码错误"})

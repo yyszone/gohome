@@ -1162,10 +1162,10 @@ func miotBoolValue(raw any) (bool, bool) {
 	return false, false
 }
 
-func miotDisplayProperty(name, description, serviceName, unit string) (field, label, displayUnit string, scale float64) {
+func miotDisplayProperty(name, description, serviceName, serviceDescription, serviceType, unit string) (field, label, displayUnit string, scale float64) {
 	n := miotNormalizedName(name)
 	t := strings.ToLower(strings.Join([]string{name, description}, " "))
-	service := strings.ToLower(serviceName)
+	service := strings.ToLower(strings.Join([]string{serviceName, serviceDescription, serviceType}, " "))
 	u := strings.TrimSpace(unit)
 	switch strings.ToLower(u) {
 	case "celsius":
@@ -1195,6 +1195,24 @@ func miotDisplayProperty(name, description, serviceName, unit string) (field, la
 	}
 	if strings.EqualFold(strings.TrimSpace(unit), "kelvin") || strings.EqualFold(u, "K") {
 		return "color_temperature", "色温", "K", 1
+	}
+	// Several environmental sensors expose generic property names (value,
+	// current or measurement). Unit and MIoT service identity are more reliable
+	// than a generic name when deciding temperature versus humidity.
+	genericValue := n == "value" || n == "current" || n == "measurement" || n == "sensorvalue"
+	if genericValue {
+		if u == "%" || strings.Contains(service, "humidity") || strings.Contains(service, "湿度") {
+			return "humidity", "湿度", firstNonEmpty(u, "%"), 1
+		}
+		if u == "°C" || u == "°F" || strings.Contains(service, "temperature") || strings.Contains(service, "温度") {
+			return "temperature", "温度", firstNonEmpty(u, "°C"), 1
+		}
+	}
+	if u == "%" && (strings.Contains(service, "environment") || strings.Contains(service, "sensor") || strings.Contains(service, "环境")) {
+		return "humidity", "湿度", "%", 1
+	}
+	if (u == "°C" || u == "°F") && (strings.Contains(service, "environment") || strings.Contains(service, "sensor") || strings.Contains(service, "环境")) {
+		return "temperature", "温度", u, 1
 	}
 	if miotIndicatorService(serviceName, "", "") && miotPowerStateName(n) {
 		return "indicator_light", "指示灯", "", 1
@@ -1318,6 +1336,13 @@ func miotReadDeviceRefs(spec miotSpecDocument) []miotDevicePropertyRef {
 				continue
 			}
 			field, scale := miotEnergyPropertyField(prop.Name, prop.Description, prop.Type, prop.Unit)
+			displayField, displayLabel, displayUnit, displayScale := miotDisplayProperty(prop.Name, prop.Description, service.Name, service.Description, service.Type, prop.Unit)
+			// Prefer explicit environmental semantics over the substring "current"
+			// in names such as currentTemperature; otherwise these sensors can be
+			// incorrectly classified as electrical current in amperes.
+			if displayField == "temperature" || displayField == "humidity" || displayField == "color_temperature" {
+				field, scale = displayField, displayScale
+			}
 			// Service identity matters: a device can expose both switch.on and
 			// indicator-light.on. Only the actual switch state may drive Device.Power.
 			if stateField := miotStatePropertyField(service.Name, service.Description, service.Type, prop.Name, prop.Description, prop.Type); stateField != "" {
@@ -1333,7 +1358,7 @@ func miotReadDeviceRefs(spec miotSpecDocument) []miotDevicePropertyRef {
 				}
 				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, ServiceName: service.Name, ServiceDescription: service.Description, ServiceType: service.Type, Field: field, Label: label, Scale: 1, Format: prop.Format, ValueList: prop.ValueList})
 				seen[key] = true
-			} else if field != "" {
+			} else if field == "power" || field == "voltage" || field == "current" || field == "today" || field == "week" || field == "month" || field == "year" || field == "total" {
 				label := map[string]string{"power": "实时功率", "voltage": "电压", "current": "电流", "today": "今日用电", "week": "本周用电", "month": "本月用电", "year": "本年用电", "total": "累计用电"}[field]
 				unit := "kWh"
 				if field == "power" {
@@ -1347,8 +1372,8 @@ func miotReadDeviceRefs(spec miotSpecDocument) []miotDevicePropertyRef {
 				}
 				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, ServiceName: service.Name, ServiceDescription: service.Description, ServiceType: service.Type, Field: "energy:" + field, Label: label, Unit: unit, Scale: scale, Format: prop.Format})
 				seen[key] = true
-			} else if f, label, unit, scale := miotDisplayProperty(prop.Name, prop.Description, service.Name, prop.Unit); f != "" {
-				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, ServiceName: service.Name, ServiceDescription: service.Description, ServiceType: service.Type, Field: f, Label: label, Unit: unit, Scale: scale, Format: prop.Format, ValueList: prop.ValueList})
+			} else if displayField != "" && (field == "" || field == displayField) {
+				refs = append(refs, miotDevicePropertyRef{SIID: service.IID, PIID: prop.IID, ServiceName: service.Name, ServiceDescription: service.Description, ServiceType: service.Type, Field: displayField, Label: displayLabel, Unit: displayUnit, Scale: displayScale, Format: prop.Format, ValueList: prop.ValueList})
 				seen[key] = true
 			} else if containsFold(prop.Access, "write") {
 				// Read values for writable settings too, so enum selectors and
@@ -1957,10 +1982,14 @@ func xiaomiPopulateLiveDeviceDetailsBatched(ctx context.Context, secret provider
 			}
 			applied := applyMIoTDeviceResultForDID(&devices[index], plans[index].refs, body, false)
 			if applied == 0 {
+				if isVacuumDevice(devices[index]) {
+					devices[index].StateIssue = ""
+					return
+				}
 				devices[index].StateIssue = fmt.Sprintf("MIoT prop/get 返回 %d 条记录，但没有匹配到请求的 SIID/PIID", len(envelope.Result))
 				return
 			}
-			if needsPowerState && devices[index].Power == nil {
+			if needsPowerState && devices[index].Power == nil && !isVacuumDevice(devices[index]) {
 				devices[index].StateIssue = "MIoT 属性读取有响应，但未返回有效的开关属性值（switch.on）；其他属性不能代替电源状态"
 				return
 			}
@@ -2111,6 +2140,9 @@ func applyMIoTDeviceResult(device *Device, refs []miotDevicePropertyRef, body []
 // multi-device batch, DID is mandatory: matching only SIID/PIID can otherwise
 // copy one device's switch state onto another device with the same spec.
 func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, body []byte, requireDID bool) int {
+	if isVacuumDevice(*device) {
+		device.Power = nil
+	}
 	energy := &EnergyMetrics{Supported: false, Source: "小米 MIoT", UpdatedAt: time.Now()}
 	for _, ref := range refs {
 		if strings.HasPrefix(ref.Field, "energy:") {
@@ -2156,6 +2188,18 @@ func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, b
 		if !ok {
 			continue
 		}
+		if ref.Field == "on" || ref.Field == "indicator_light" {
+			if isVacuumDevice(*device) {
+				continue
+			}
+			if _, validBool := miotBoolValue(item.Value); !validBool {
+				continue
+			}
+		}
+		// Writable vacuum properties are retained, including boolean modes
+		// such as carpet boost or do-not-disturb. Main power is suppressed by
+		// the device-specific UI semantics and by clearing Device.Power below;
+		// dropping every boolean control here would also remove useful actions.
 		device.StateRead = true
 		applied++
 		for index := range device.Controls {
@@ -2219,6 +2263,17 @@ func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, b
 	}
 	if energy.Supported {
 		device.Energy = energy
+	}
+	if isVacuumDevice(*device) {
+		device.Power = nil
+		filtered := attrs[:0]
+		for _, attr := range attrs {
+			if attr.Key == "on" || attr.Label == "开关状态" || attr.Label == "电源开关" {
+				continue
+			}
+			filtered = append(filtered, attr)
+		}
+		attrs = filtered
 	}
 	device.Attributes = attrs
 	device.Value = summarizeDeviceAttributes(device)

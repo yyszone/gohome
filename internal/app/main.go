@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log"
 	"math"
+	"mime"
 	"net/http"
 	"os"
 	"os/signal"
@@ -36,7 +37,7 @@ var webFiles embed.FS
 // Build metadata is injected by Makefile from the current Git repository.
 // A source ZIP without .git metadata intentionally reports commit count 0.
 var (
-	version     = "0.2.26-source"
+	version     = "0.2.28-source"
 	buildDate   = "source"
 	commitCount = "0"
 	gitHash     = ""
@@ -119,6 +120,7 @@ type Device struct {
 	Energy        *EnergyMetrics    `json:"energy,omitempty"`
 	Attributes    []DeviceAttribute `json:"attributes,omitempty"`
 	Value         string            `json:"value,omitempty"`
+	CameraURL     string            `json:"cameraUrl,omitempty"`
 	LastSeen      time.Time         `json:"lastSeen"`
 	Demo          bool              `json:"demo"`
 	ProviderGroup string            `json:"providerGroup,omitempty"`
@@ -352,6 +354,7 @@ func (s *Store) snapshot() diskState {
 				v.Devices[i].Channels[j].Power = &power
 			}
 		}
+		v.Devices[i] = sanitizeVacuumDisplay(v.Devices[i])
 	}
 	v.Accounts = append([]Account{}, s.data.Accounts...)
 	v.Discovery = append([]Discovery{}, s.data.Discovery...)
@@ -838,10 +841,11 @@ func (s *Store) liveSnapshot() (uint64, []LiveDeviceState) {
 				controlValues = append(controlValues, LiveControlValue{ID: control.ID, Value: control.Value})
 			}
 		}
+		presented := sanitizeVacuumDisplay(device)
 		live := LiveDeviceState{
-			ID: device.ID, Online: device.Online, Power: cloneBool(device.Power),
-			Channels: cloneDeviceChannels(device.Channels), Attributes: append([]DeviceAttribute{}, device.Attributes...),
-			ControlValues: controlValues, Value: device.Value, LastSeen: device.LastSeen,
+			ID: device.ID, Online: device.Online, Power: cloneBool(presented.Power),
+			Channels: cloneDeviceChannels(presented.Channels), Attributes: append([]DeviceAttribute{}, presented.Attributes...),
+			ControlValues: controlValues, Value: presented.Value, LastSeen: presented.LastSeen,
 		}
 		if device.Energy != nil {
 			energy := *device.Energy
@@ -864,6 +868,9 @@ func (s *Store) liveSnapshot() (uint64, []LiveDeviceState) {
 type App struct {
 	store         *Store
 	mux           *http.ServeMux
+	dataDir       string
+	adminPassword string
+	authMu        sync.RWMutex
 	authKey       []byte
 	authDisabled  bool // test-only bypass; production always uses the persistent cookie session.
 	loginMu       sync.Mutex
@@ -881,8 +888,16 @@ func newApp(s *Store) *App {
 	if err != nil {
 		log.Fatalf("初始化登录 Cookie 密钥失败: %v", err)
 	}
+	adminPassword, generated, err := loadOrCreateAdminPassword(dataDir)
+	if err != nil {
+		log.Fatalf("初始化管理员密码失败: %v", err)
+	}
+	if generated {
+		log.Printf("首次启动已生成管理员密码，请执行：cat %s", filepath.Join(dataDir, adminPasswordFileName))
+	}
 	a := &App{
-		store: s, mux: http.NewServeMux(), authKey: authKey,
+		store: s, mux: http.NewServeMux(), dataDir: dataDir,
+		adminPassword: adminPassword, authKey: authKey,
 		loginAttempts: make(map[string]loginAttempt),
 	}
 	a.integrations = newIntegrationManager(s, v)
@@ -894,6 +909,7 @@ func (a *App) routes() {
 	a.mux.HandleFunc("POST /api/auth/login", a.authLogin)
 	a.mux.HandleFunc("GET /api/auth/session", a.authSession)
 	a.mux.HandleFunc("POST /api/auth/logout", a.authLogout)
+	a.mux.HandleFunc("POST /api/auth/password", a.changeAdminPassword)
 	a.mux.HandleFunc("POST /api/state-sync/activity", a.updateStateSyncActivity)
 	a.mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{
@@ -930,11 +946,24 @@ func (a *App) routes() {
 	a.mux.HandleFunc("POST /api/discovery/scan", a.scanDiscovery)
 	a.mux.HandleFunc("GET /api/logs", a.listLogs)
 	static, _ := fs.Sub(webFiles, "web")
-	a.mux.Handle("GET /", http.FileServer(http.FS(static)))
+	// Browsers expect the standard manifest MIME type for install metadata.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+	staticServer := http.FileServer(http.FS(static))
+	a.mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			w.Header().Set("Cache-Control", "no-cache")
+		} else {
+			// Static paths carry a version query string in index.html, so a
+			// short cache avoids repeated transfers without pinning old assets.
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		}
+		staticServer.ServeHTTP(w, r)
+	}))
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !a.authDisabled && !a.isPublicAuthRequest(r) && !a.hasValidSession(r) {
+	validSession := a.authDisabled || a.isPublicAuthRequest(r) || a.hasValidSession(r)
+	if !a.authDisabled && !a.isPublicAuthRequest(r) && !validSession {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "登录状态已失效，请重新登录"})
 		} else {
@@ -948,6 +977,11 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
+	}
+	if !a.authDisabled && validSession && !a.isPublicAuthRequest(r) && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		// Sliding refresh keeps active browser sessions persistent without
+		// extending cookies on unauthenticated/public requests.
+		a.setSessionCookie(w, r)
 	}
 	a.mux.ServeHTTP(w, r)
 }
@@ -997,9 +1031,10 @@ func (a *App) apiDocs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":           "GoHome API",
 		"version":        "1.0",
-		"authentication": "Persistent HttpOnly signed Cookie; POST /api/auth/login returns a long-lived gohome_session cookie",
+		"authentication": "Persistent HttpOnly signed Cookie. First-run administrator password is generated into data/gohome.admin.password (file mode 0600).",
 		"endpoints": []map[string]any{
-			{"method": "POST", "path": "/api/auth/login", "body": map[string]any{"username": "admin", "password": "123456"}, "description": "Create a persistent HttpOnly session cookie"},
+			{"method": "POST", "path": "/api/auth/login", "body": map[string]any{"username": "admin", "password": "读取 data/gohome.admin.password"}, "description": "Create a persistent HttpOnly session cookie"},
+			{"method": "POST", "path": "/api/auth/password", "body": map[string]any{"currentPassword": "当前密码", "newPassword": "新密码（12–128 位）", "confirmPassword": "确认新密码"}, "description": "Change administrator password and invalidate other sessions"},
 			{"method": "GET", "path": "/api/auth/session", "description": "Check whether the browser has a valid session cookie"},
 			{"method": "POST", "path": "/api/auth/logout", "description": "Clear the session cookie"},
 			{"method": "POST", "path": "/api/state-sync/activity", "body": map[string]any{"clientId": "per-tab-id", "active": true}, "description": "Lease visible overview/device page activity to enable provider polling; release when hidden"},
@@ -1099,8 +1134,9 @@ func (a *App) createDevice(w http.ResponseWriter, r *http.Request) {
 func (a *App) updateDevice(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var in struct {
-		Name string `json:"name"`
-		Room string `json:"room"`
+		Name      string  `json:"name"`
+		Room      string  `json:"room"`
+		CameraURL *string `json:"cameraUrl"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "请求格式错误")
@@ -1114,6 +1150,14 @@ func (a *App) updateDevice(w http.ResponseWriter, r *http.Request) {
 			}
 			if strings.TrimSpace(in.Room) != "" {
 				d.Room = strings.TrimSpace(in.Room)
+			}
+			if in.CameraURL != nil {
+				cameraURL, err := validateCameraURL(*in.CameraURL)
+				if err != nil {
+					fail(w, http.StatusBadRequest, err.Error())
+					return
+				}
+				d.CameraURL = cameraURL
 			}
 			if err := a.store.putDevice(d); err != nil {
 				fail(w, 500, err.Error())
@@ -1345,6 +1389,9 @@ func (a *App) commandDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func findXiaomiPowerControl(device Device) (DeviceControl, bool) {
+	if isVacuumDevice(device) {
+		return DeviceControl{}, false
+	}
 	// chuangmi.plug.m3 has a stable, model-specific relay coordinate. Return
 	// this before consulting persisted controls so an old/stale control cache
 	// cannot accidentally target indicator-light.on (3/1).

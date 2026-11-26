@@ -175,8 +175,32 @@ function deviceFallbackSummary(d) {
   const label = ({'摄像头':'摄像头已接入','音箱':'音箱已连接','温湿度计':'环境传感器在线','传感器':'传感器在线','插座':'插座已接入','灯光':'灯具已接入','空调':'空调已接入','扫地机器人':'清洁设备已接入','影音设备':'影音设备已接入','洗碗机':'家电已接入'})[category] || '设备已接入';
   return d.online ? label : `${category}离线`;
 }
+function isVacuumDevice(d) {
+  const identity = `${d?.brand || ''} ${d?.model || ''} ${d?.name || ''}`.toLowerCase();
+  return ['扫地机器人','扫拖机器人'].some(x => String(d?.category || '').includes(x))
+    || ['vacuum','roborock','rockrobo','扫地机器人','扫拖机器人','扫地机'].some(x => identity.includes(x));
+}
+function isCameraDevice(d) { return String(d?.category || '').includes('摄像'); }
+function renderCameraPreview(d) {
+  const source = String(d?.cameraUrl || '').trim();
+  if (!isCameraDevice(d) || !source) return '';
+  let parsed;
+  try { parsed = new URL(source, window.location.href); } catch { return '<div class="camera-preview-note">视频地址无效，请重新配置</div>'; }
+  if (!['http:','https:'].includes(parsed.protocol)) return '<div class="camera-preview-note">只支持浏览器可访问的 HTTP/HTTPS 视频地址</div>';
+  const src = esc(parsed.href);
+  const path = parsed.pathname.toLowerCase();
+  if (/\.(mjpg|mjpeg)$/.test(path) || parsed.searchParams.has('mjpeg')) {
+    return `<div class="camera-preview"><img src="${src}" alt="摄像头实时画面" loading="lazy"><small>MJPEG 实时画面</small></div>`;
+  }
+  if (/\.(mp4|webm|m3u8)$/.test(path)) {
+    const hls = path.endsWith('.m3u8');
+    return `<div class="camera-preview"><video controls playsinline muted preload="none" src="${src}"></video><small>${hls ? 'HLS 地址（需浏览器原生支持）' : '视频预览'}</small></div>`;
+  }
+  return `<div class="camera-preview-link"><a href="${src}" target="_blank" rel="noopener noreferrer">打开摄像头视频地址 ↗</a><small>支持 MJPEG、MP4、WebM；HLS 取决于浏览器</small></div>`;
+}
 function renderDeviceHoverActions(d) {
-  return `<div class="device-hover-actions" aria-label="设备操作"><button type="button" class="device-api-copy" data-copy-device-api="${esc(d.id)}" title="复制设备 API"><span aria-hidden="true">⧉</span><span>复制 API</span></button><button type="button" class="device-delete" data-delete-device="${esc(d.id)}" title="删除设备" aria-label="删除设备"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6 2.5h4M4.5 4.5l.6 9h5.8l.6-9M6.5 6.5v5M9.5 6.5v5"/></svg></button></div>`;
+  const camera = isCameraDevice(d) ? `<button type="button" class="device-camera-source" data-camera-source="${esc(d.id)}" title="配置摄像头预览地址">视频源</button>` : '';
+  return `<div class="device-hover-actions" aria-label="设备操作">${camera}<button type="button" class="device-api-copy" data-copy-device-api="${esc(d.id)}" title="复制设备 API"><span aria-hidden="true">⧉</span><span>复制 API</span></button><button type="button" class="device-delete" data-delete-device="${esc(d.id)}" title="删除设备" aria-label="删除设备"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6 2.5h4M4.5 4.5l.6 9h5.8l.6-9M6.5 6.5v5M9.5 6.5v5"/></svg></button></div>`;
 }
 function overviewEnergy(d) {
   const energy = d.energy;
@@ -190,18 +214,30 @@ function overviewEnergy(d) {
   return `<div class="overview-energy">${items.map(([label,value,unit,digits,source]) => `<div><small>${label}</small><strong>${formatMetric(value,digits)} <em>${unit}</em></strong>${source ? `<small class="overview-energy-source">${esc(source)}</small>` : ''}</div>`).join('')}</div><div class="overview-energy-updated">计量更新 ${fmtTime(energy.updatedAt)}</div>`;
 }
 function devicePowerSummary(d, channels=asArray(d.channels)) {
+  if (isVacuumDevice(d)) return d.value || deviceFallbackSummary(d);
   if (channels.length > 1) return `${channels.filter(ch => ch.power === true).length}/${channels.length} 路开启`;
   if (d.power === true) return '已开启';
   if (d.power === false) return '已关闭';
   if (d.canControl || String(d?.model || '').trim().toLowerCase() === 'chuangmi.plug.m3') return '开关状态未知';
   return d.value || deviceFallbackSummary(d);
 }
+function hasPrimaryPowerSwitch(d, channels=asArray(d.channels)) {
+  if (isVacuumDevice(d)) return false;
+  if (channels.length) return true;
+  if (d?.protocol === 'ewelink-cloud' && d.canControl) return true;
+  if (d?.power === true || d?.power === false) return true;
+  if (String(d?.model || '').toLowerCase() === 'chuangmi.plug.m3') return true;
+  return asArray(d?.controls).some(c => isPrimaryMIoTPowerControl(d, c));
+}
 function isPrimaryMIoTPowerControl(d, c) {
+  if (isVacuumDevice(d)) return false;
   if (!c || c.kind !== 'property' || !['bool','boolean'].includes(String(c.format || '').toLowerCase())) return false;
   if (String(d?.model || '').toLowerCase() === 'chuangmi.plug.m3') return Number(c.siid) === 2 && Number(c.piid) === 1;
   return miotControlLabel(c.name) === '电源开关';
 }
 function miotControlLabelForDevice(d, c) {
+  const powerKey = String(c?.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (isVacuumDevice(d) && ['on','power','switch','relaystate','switchstate'].includes(powerKey)) return '';
   if (String(d?.model || '').toLowerCase() === 'chuangmi.plug.m3' && Number(c?.siid) === 3 && Number(c?.piid) === 1) return '指示灯';
   return miotControlLabel(c?.name);
 }
@@ -217,7 +253,7 @@ function renderDeviceCard(d) {
   const online = d.online ? '<span class="device-status">● 在线</span>' : '<span class="device-status offline">● 离线</span>';
   const channels = asArray(d.channels);
   const controls = asArray(d.controls).filter(c => c && !isPrimaryMIoTPowerControl(d, c) && !isDisplayOnlyMIoTProperty(d, c) && ((c.kind === 'property' && miotControlLabelForDevice(d, c)) || (c.kind === 'action' && isSafeVisibleMIoTAction(c))));
-  const controlCount = controls.length + channels.length + (d.canControl && !channels.length ? 1 : 0);
+  const controlCount = controls.length + channels.length + (d.canControl && hasPrimaryPowerSwitch(d, channels) && !channels.length ? 1 : 0);
   const hasControls = controlCount > 0 && d.canControl || controls.length > 0;
   const summary = devicePowerSummary(d, channels);
   const control = renderDeviceControls(d);
@@ -232,7 +268,7 @@ function renderDeviceCard(d) {
     </div>
     <div class="overview-device-meta"><span>${esc(d.category || '其他')}</span><span>${esc(summary)}</span></div>
     ${attrs.length ? `<div class="overview-attributes">${attrs.map(a => `<span>${esc(a.label)} <b>${esc(a.value)}${esc(a.unit || '')}</b></span>`).join('')}</div>` : ''}
-    ${overviewEnergy(d)}${controlHTML}
+    ${renderCameraPreview(d)}${overviewEnergy(d)}${controlHTML}
   </article>`;
 }
 function deviceBrandGroup(d) {
@@ -294,11 +330,11 @@ function renderDeviceControls(d) {
   let powerHTML = '';
   if (channels.length > 1 && d.canControl) {
     powerHTML = `<div class="device-channel-controls">${channels.map(ch => `<div class="device-channel-row"><span>${esc(ch.name || `通道 ${Number(ch.outlet)+1}`)}</span><button class="switch ${ch.power ? 'on' : ''}"${deviceCommandPending(d.id, Number(ch.outlet)) ? ' disabled' : ''} data-command="toggle" data-channel="${Number(ch.outlet)}" data-id="${esc(d.id)}" aria-label="切换${esc(d.name)} ${esc(ch.name || `通道 ${Number(ch.outlet)+1}`)}"></button></div>`).join('')}</div>`;
-  } else if (d.canControl && hasPower) {
+  } else if (d.canControl && hasPrimaryPowerSwitch(d, channels) && hasPower) {
     const powerChannel = channels.length === 1 ? Number(channels[0].outlet) : undefined;
     const channel = powerChannel === undefined ? '' : ` data-channel="${powerChannel}"`;
     powerHTML = `<button class="switch ${d.power ? 'on' : ''}"${deviceCommandPending(d.id, powerChannel) ? ' disabled' : ''} data-command="toggle"${channel} data-id="${esc(d.id)}" aria-label="切换${esc(d.name)}"></button>`;
-  } else if (d.canControl) {
+  } else if (d.canControl && hasPrimaryPowerSwitch(d, channels)) {
     // Unknown state must not be rendered as ON or guessed by a toggle.
     // Explicit ON/OFF controls remain safe while the next cloud read is pending.
     powerHTML = `<div class="miot-control-buttons power-state-unknown"><button type="button" class="miot-action-btn"${deviceCommandPending(d.id) ? ' disabled' : ''} data-command="turn_on" data-id="${esc(d.id)}">开启</button><button type="button" class="miot-action-btn"${deviceCommandPending(d.id) ? ' disabled' : ''} data-command="turn_off" data-id="${esc(d.id)}">关闭</button></div>`;
@@ -353,9 +389,11 @@ function buildDeviceAPIText(d) {
   const lines = [
     `# ${d.name || '设备'} API`,
     `# Device ID: ${id}`,
-    `# 首次使用时执行登录命令；Cookie 会保存到本地文件，后续请求复用。`,
+    `# 首次密码由服务端生成；首次登录前在服务端执行 cat data/gohome.admin.password 读取。`,
     `AUTH_JAR=${jar}`,
-    `curl -sS -c "$AUTH_JAR" -b "$AUTH_JAR" -X POST '${base}/api/auth/login' -H 'Content-Type: application/json' -d '{"username":"admin","password":"123456"}'`,
+    `PASSWORD_FILE=/root/gohome/data/gohome.admin.password`,
+    `PASSWORD="$(cat "$PASSWORD_FILE")"`,
+    `curl -sS -c "$AUTH_JAR" -b "$AUTH_JAR" -X POST '${base}/api/auth/login' -H 'Content-Type: application/json' -d "$(printf '{\"username\":\"admin\",\"password\":\"%s\"}' "$PASSWORD")"`,
     ''
   ];
   lines.push('# 查询设备详情');
@@ -404,7 +442,7 @@ function renderDeviceRow(d) {
   const status = d.online ? '<span class="device-status">● 在线</span>' : '<span class="device-status offline">● 离线</span>';
   const channels = asArray(d.channels);
   const summary = devicePowerSummary(d, channels);
-  const richControls = channels.length >= 4 || asArray(d.controls).filter(c => c && ((c.kind === 'property' && miotControlLabel(c.name)) || (c.kind === 'action' && isSafeVisibleMIoTAction(c)))).length + channels.length >= 5;
+  const richControls = channels.length >= 4 || asArray(d.controls).filter(c => c && ((c.kind === 'property' && miotControlLabelForDevice(d, c)) || (c.kind === 'action' && isSafeVisibleMIoTAction(c)))).length + channels.length >= 5;
   return `<article class="device-list-item ${richControls ? 'has-rich-controls' : ''}">
     <div class="device-list-main">
       <span class="device-glyph ${cls}">${icon}</span>
@@ -413,6 +451,7 @@ function renderDeviceRow(d) {
       ${renderDeviceHoverActions(d)}
     </div>
     ${renderDeviceAttributes(d)}
+    ${renderCameraPreview(d)}
     ${renderEnergyMetrics(d.energy)}
     <div class="device-list-actions"><span class="device-state">${esc(summary)}</span><div class="device-list-command-area">${renderDeviceControls(d)}</div></div>
   </article>`;
@@ -713,6 +752,7 @@ document.addEventListener('click', async (e) => {
     }
     return;
   }
+  const cameraSource=e.target.closest('[data-camera-source]'); if(cameraSource){const device=state.devices.find(d=>d.id===cameraSource.dataset.cameraSource);if(!device){toast('设备已不存在，请刷新列表','error');return;}const form=$('#camera-source-form');form.elements.deviceId.value=device.id;form.elements.cameraUrl.value=device.cameraUrl||'';$('#camera-source-name').textContent=device.name;openModal('#camera-source-backdrop');return;}
   const copyAPI=e.target.closest('[data-copy-device-api]'); if(copyAPI){const device=state.devices.find(d=>d.id===copyAPI.dataset.copyDeviceApi);if(!device){toast('设备已不存在，请刷新列表','error');return;}try{await copyText(buildDeviceAPIText(device));toast('设备 API 请求示例已复制','success')}catch(err){toast(err.message,'error')}return;}
   const deleteDevice=e.target.closest('[data-delete-device]'); if(deleteDevice){const device=state.devices.find(d=>d.id===deleteDevice.dataset.deleteDevice);if(!device){toast('设备已不存在，请刷新列表','error');return;}const ok=confirm(`确定永久删除“${device.name}”？普通设备同步不会重新添加；删除品牌账号并重新登录后，可以重新同步恢复。`);if(!ok)return;deleteDevice.disabled=true;try{await api(`/api/devices/${encodeURIComponent(device.id)}`,{method:'DELETE'});state.devices=state.devices.filter(d=>d.id!==device.id);renderDevices();toast('设备已删除；重新登录品牌账号后可恢复','success')}catch(err){toast(err.message,'error')}finally{deleteDevice.disabled=false}return;}
   const prop=e.target.closest('[data-miot-property]'); if(prop){prop.disabled=true;try{const value=prop.dataset.value==='true';await api(`/api/v1/devices/${encodeURIComponent(prop.dataset.id)}/property`,{method:'POST',body:JSON.stringify({siid:Number(prop.dataset.siid),piid:Number(prop.dataset.piid),value})});await refreshLiveAfterControl();void loadLogs();toast('MIoT 属性写入成功','success')}catch(err){void loadLogs();toast(err.message,'error')}finally{prop.disabled=false}return;}
@@ -884,6 +924,27 @@ $('#scan-btn').onclick=async()=>{
   catch(err){toast(err.message,'error')}
   finally{btn.disabled=false;btn.textContent='⌁ 开始扫描'}
 };
+
+$('#password-open')?.addEventListener('click',()=>{const form=$('#password-form');form.reset();$('#password-error').hidden=true;openModal('#password-backdrop');});
+$('#password-close')?.addEventListener('click',()=>closeModal('#password-backdrop'));
+$('#password-cancel')?.addEventListener('click',()=>closeModal('#password-backdrop'));
+$('#password-form')?.addEventListener('submit',async event=>{
+  event.preventDefault();const form=event.currentTarget;const button=form.querySelector('button[type="submit"]');
+  const currentPassword=form.elements.currentPassword.value;const newPassword=form.elements.newPassword.value;const confirmPassword=form.elements.confirmPassword.value;
+  $('#password-error').hidden=true;button.disabled=true;
+  try{await api('/api/auth/password',{method:'POST',body:JSON.stringify({currentPassword,newPassword,confirmPassword})});form.reset();closeModal('#password-backdrop');toast('管理员密码已修改，其他浏览器需要重新登录','success');}
+  catch(err){$('#password-error').textContent=err.message||'密码修改失败';$('#password-error').hidden=false;}
+  finally{button.disabled=false;}
+});
+$('#camera-source-close')?.addEventListener('click',()=>closeModal('#camera-source-backdrop'));
+$('#camera-source-cancel')?.addEventListener('click',()=>closeModal('#camera-source-backdrop'));
+$('#camera-source-form')?.addEventListener('submit',async event=>{
+  event.preventDefault();const form=event.currentTarget;const button=form.querySelector('button[type="submit"]');
+  const id=form.elements.deviceId.value;const cameraUrl=form.elements.cameraUrl.value.trim();button.disabled=true;
+  try{const updated=await api(`/api/devices/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify({cameraUrl})});state.devices=state.devices.map(d=>d.id===id?{...d,...updated}:d);closeModal('#camera-source-backdrop');renderDevices();toast(cameraUrl?'摄像头地址已保存':'摄像头视频源已清除','success');}
+  catch(err){toast(err.message,'error');}
+  finally{button.disabled=false;}
+});
 
 $('#login-form').addEventListener('submit', async event => {
   event.preventDefault();

@@ -1,4 +1,24 @@
-# GoHome v0.2.26
+# GoHome v0.2.28
+
+## v0.2.28 设备识别、认证管理与一键部署
+
+- 小米 MIoT 温湿度优先使用属性名称、服务元数据和单位识别，修复 `currentTemperature` 被误判成电流的问题。
+- Roborock / Vacuum 类扫地机器人不会把 MIoT 数组状态识别为主电源开关；旧的错误电源状态在设备快照层过滤，清扫/返回充电座等动作保留。
+- 摄像头设备增加 HTTP 视频源配置：MJPEG、MP4、WebM 直接预览；HLS 需浏览器原生支持。RTSP / 私有 P2P 需通过独立网关转换。
+- 首次启动生成随机管理员密码，保存在 `data/gohome.admin.password`（0600）；登录 Cookie 长期有效并在访问时刷新，页面右上角可修改密码。
+- 设备页、视频预览与操作栏进一步适配手机屏幕。
+- 增加 `make deploy DEPLOY_HOST=root@IP DEPLOY_ARCH=arm64`，远程校验架构、原子替换服务实际运行的二进制，启动失败自动回滚。
+- 新增 `docs/PATCHING.md`，将密码、摄像头、设备语义、MIoT 协议和部署拆分为独立模块，方便未来按模块生成 patch。
+
+## v0.2.27 品牌视觉升级
+
+- 新增 GoHome 专属智能家庭图标：以深海军蓝为底，融合青绿色智能家居轮廓、线路节点和暖黄色门廊；用于网页 favicon、登录页品牌标识、侧边栏 Logo、Apple Touch Icon 与 Web App Manifest。
+- 页面视觉统一为深海军蓝导航栏 + 清爽浅色控制台，使用青绿作为主交互色；优化统计卡片、设备卡片、接入卡片、局域网发现横幅、运行日志和登录卡片的层次、留白、边框与阴影。
+- 新增独立 `theme.css` 主题覆盖层，原 `app.css` 和页面交互脚本保留；移动端断点、设备卡片、品牌登录、开关控制等原有 DOM 与交互不变。
+- 新增 16/32/48 像素 favicon、SVG favicon、ICO、96 像素侧栏 Logo、180 像素 Apple Touch Icon、192/512 像素 Web App 图标和 `site.webmanifest`。
+- 静态资源 URL 带版本参数；首页使用 `no-cache`，CSS/JS/图标等静态文件缓存 24 小时，更新前端时不会长期卡在旧图标或旧样式。
+- Makefile 在原 Git 仓库中继续按提交数生成版本；从不含 `.git` 的源码 ZIP 编译时使用 `SOURCE_VERSION=0.2.28`，不再错误显示为 `0.2.0`。
+- 仅修改前端静态资源、静态缓存头与版本元数据，不修改设备数据库、品牌账号 ID、登录流程、Token、Vault、Session 密钥或 API。
 
 ## v0.2.26 Armbian ARM32/ARM64 编译与 systemd 守护
 
@@ -149,11 +169,12 @@ Content-Type: application/json
 - 如果小米账号同时开放短信和邮箱验证，页面可以在当前会话中切换验证渠道；不需要重新创建登录会话。
 - `70022` 表示小米验证码发送请求被拒绝，但公开资料没有给出这个错误码的唯一释义。若其他手机号能收到验证码，优先检查当前绑定安全手机号的发送额度、号码风控、运营商路由和短信退订拦截。小米官方说明同一手机号 24 小时短信上限通常为中国大陆 5 次、其他国家/地区 3 次；达到上限后需等待 24 小时。
 - 删除侧栏重复的 `sidebar-foot` 版本信息，版本元信息只保留在页面底部。
-- 首次访问显示 GoHome 内置登录页；初始账号固定为 `admin`，初始密码固定为 `123456`，不再读取 `GOHOME_USER` / `GOHOME_PASSWORD`。
-- 登录后由服务端签发 HttpOnly、SameSite Strict 的持久 Cookie；签名密钥写入 `data/gohome.session.key`，进程重启后仍可验证旧 Cookie。
-- 登录失败 5 次后对来源 IP 暂时限流；API 复制示例同步改为 Cookie 登录方式。
+- 首次访问显示 GoHome 内置登录页；管理员账号为 `admin`，首次随机密码保存在 `data/gohome.admin.password`，不使用共享默认密码。
+- 登录后由服务端签发 HttpOnly、SameSite Strict 的长期 Cookie；签名密钥写入 `data/gohome.session.key`，进程重启后仍可验证旧 Cookie。已认证的 GET 请求会滚动刷新 Cookie。
+- 页面支持修改管理员密码；修改成功后轮换 Session 密钥，其他浏览器的旧会话失效。新密码长度要求 12–128 个字符。
+- 登录失败 5 次后对来源 IP 暂时限流；API 复制示例先从服务端密码文件读取密码，再使用 Cookie 调用设备 API。
 
-**安全警告：** `admin/123456` 是所有未修改安装共用的弱默认密码。GoHome 可控制插座、摄像头等家庭设备，只能放在可信局域网内使用，不要把 17880 端口直接映射到公网。Cookie 服务器端签名没有自动过期，浏览器 Cookie 设置为长期持久保存；浏览器本身可能按自身策略限制最长保留时间。丢失 `data/gohome.session.key` 会使旧 Cookie 失效，需要重新登录。
+**安全警告：** 管理员密码和 Session 签名密钥保存在 `data/`，请保护整个目录（密码和 Session 文件为 0600），不要提交到 Git 或放入公开源码 ZIP。GoHome 可控制插座、摄像头等家庭设备，只能放在可信局域网内使用，不要把 17880 端口直接映射到公网。浏览器 Cookie 设为 10 年持久有效，但浏览器本身可能按自身策略限制最长保留时间；丢失 `data/gohome.session.key` 会使旧 Cookie 失效，需要重新登录。
 
 GoHome 是一个轻量级 Go 家庭设备管理服务，单进程运行，静态 Web 资源内嵌在可执行文件中。当前支持小米 / 米家云端 MIoT 与 eWeLink 普通账号，提供设备同步、状态读取、规格驱动控制、设备 API、日志和 mDNS 发现扩展。
 
@@ -169,8 +190,8 @@ GoHome 是一个轻量级 Go 家庭设备管理服务，单进程运行，静态
 
 ## v0.2.14 更新
 
-- 内置管理员登录页：`POST /api/auth/login` 校验源代码中的固定初始账号密码；首次进入先登录，API 未认证时返回 JSON 401。
-- 长期登录 Cookie：`gohome_session` 为 HttpOnly、SameSite Strict，过期时间设置为 10 年；密钥 `data/gohome.session.key` 使用随机 256-bit 值创建并以 0600 权限保存。升级时必须保留该文件，浏览器登录状态才会跨重启延续。
+- 内置管理员登录页：`POST /api/auth/login` 校验首次启动生成的管理员密码；首次进入先登录，API 未认证时返回 JSON 401。
+- 长期登录 Cookie：`gohome_session` 为 HttpOnly、SameSite Strict，过期时间设置为 10 年；密钥 `data/gohome.session.key` 使用随机 256-bit 值创建并以 0600 权限保存。管理员密码另存为 `data/gohome.admin.password`，升级时必须保留整个 `data/` 目录。
 - 登录暴力尝试保护：同一来源 IP 在 15 分钟内连续失败 5 次，将临时锁定 10 分钟。
 - 小米 70022：准确区分“读取验证渠道失败”和“小米拒绝发送验证码”；同一验证会话可选短信或邮箱重试。
 - 清理侧栏重复版本文字；设备复制 API 的 curl 示例改为先登录并保存 Cookie 文件，再携带 Cookie 调用设备接口。
@@ -324,7 +345,7 @@ $env:GOHOME_ADDR = "0.0.0.0:17880"
 .\dist\gohome-windows-amd64.exe
 ```
 
-浏览器访问 `http://NAS_IP:17880`。首次会显示 GoHome 登录页，默认账号 `admin`、密码 `123456`。登录成功后浏览器会保存长期 Cookie；以后访问自动保持登录，不需要重复输入密码。
+浏览器访问 `http://NAS_IP:17880`。首次会显示 GoHome 登录页，管理员账号为 `admin`。在服务端运行 `cat data/gohome.admin.password` 读取首次随机生成的密码。登录成功后浏览器会保存长期 Cookie；以后访问自动保持登录。
 
 也可以使用 `scripts/start-linux.sh` 或 `scripts/start-windows.bat` 从项目目录启动。手动运行 Linux 二进制时请先 `cd` 到项目根目录，或设置绝对路径 `GOHOME_DATA_DIR`；Armbian 的 systemd 服务已自动固定为 `/root/gohome/data`。
 
@@ -472,11 +493,11 @@ data/
 
 升级时请停止旧程序并完整备份、复制整个 `data/` 目录。必须保留 `gohome.vault.json`、`gohome.vault.key` 和 `gohome.session.key`，否则品牌凭证无法解密或旧浏览器 Cookie 无法继续使用。不要把 `data/` 提交到 Git 或公开分享。
 
-初始管理员账号固定为 `admin`，初始密码固定为 `123456`，写在 `internal/app/auth.go` 中，不读取环境变量。登录 Cookie 为长期持久 Cookie，服务端使用 `data/gohome.session.key` 验签，重启 GoHome 不会自动退出。浏览器厂商可能限制 Cookie 的最长保存时间，因此不承诺浏览器侧严格永久。
+管理员账号固定为 `admin`，首次密码由每个安装独立随机生成并写入 `data/gohome.admin.password`。登录 Cookie 使用 `data/gohome.session.key` 验签，Cookie 有效期为 10 年并在认证访问时刷新；修改管理员密码会轮换密钥，使其他浏览器旧会话失效。浏览器厂商可能限制 Cookie 的最长保存时间。
 
 小米 / eWeLink 云端令牌仍受服务端有效期和安全策略约束，不承诺永久有效；但通常升级程序和保留 `data/` 后不需要重新登录品牌账号。
 
-**安全提示：** 默认密码极弱且是固定值。只在可信家庭 LAN 使用；请勿配置公网端口转发、反向代理公开访问或在不可信网络使用。
+**安全提示：** 首次密码为每个安装独立随机生成，但仍建议首次登录后立即修改为自己保管的强密码。只在可信家庭 LAN 使用；请勿配置公网端口转发、反向代理公开访问或在不可信网络使用。
 
 ## 设备 API
 
@@ -485,9 +506,11 @@ API 使用 GoHome 登录 Cookie。命令行可以先登录并将 Cookie 保存�
 ```bash
 BASE='http://NAS_IP:17880'
 JAR='gohome-cookie.txt'
+# 在 NAS 上读取首次生成的随机密码；也可以手动输入你修改后的密码。
+PASSWORD="$(ssh root@NAS_IP 'cat /root/gohome/data/gohome.admin.password')"
 curl -c "$JAR" -b "$JAR" -X POST "$BASE/api/auth/login" \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"123456"}'
+  -d "{\"username\":\"admin\",\"password\":\"$PASSWORD\"}"
 ```
 
 查询设备列表：
@@ -589,3 +612,15 @@ curl -X POST -b "$JAR" \
 ## 小米开关快速反馈
 
 MIoT 主继电器控制在云端 `prop/set` 成功后立即更新本地状态并返回，不再把第二次云端读取放在 HTTP 响应路径中。服务端随后使用独立后台 Context 延迟执行一次精确属性读回，校准真实状态。浏览器端在点击时立即切换按钮，成功后合并服务端设备快照，失败时回滚；无需刷新整页。`chuangmi.plug.m3` 的指示灯（3/1）仍显示为状态，但不会再生成额外的属性开关按钮。
+
+## v0.2.28 一键部署
+
+已安装 systemd 服务且部署目录为默认 `/root/gohome` 时，在开发机执行：
+
+```bash
+make deploy DEPLOY_HOST=root@192.168.31.63 DEPLOY_ARCH=arm64
+```
+
+`DEPLOY_ARCH` 可选 `arm64`、`armv7`、`amd64`；可使用 `DEPLOY_PATH` 和 `DEPLOY_SERVICE` 覆盖远程项目目录或服务名。该命令自动测试、交叉编译、检查远程架构、上传、原子替换并重启服务；如果新进程未进入 active 状态，会恢复旧二进制。它只更新 `scripts/service-start.sh` 实际选择的架构二进制，不清理 `data/`。详见 `UPGRADE-v0.2.28.md`。
+
+后续按模块生成和应用 Patch 的目录分工见 `docs/PATCHING.md`。

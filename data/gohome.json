@@ -13,7 +13,7 @@
       "online": true,
       "power": false,
       "canControl": true,
-      "lastSeen": "2026-11-25T11:02:51.190165479+08:00",
+      "lastSeen": "2026-11-26T08:31:30.67792946+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.275280153+08:00"
     },
@@ -27,7 +27,7 @@
       "room": "室外",
       "category": "插座",
       "protocol": "ewelink-cloud",
-      "online": true,
+      "online": false,
       "power": true,
       "channels": [
         {
@@ -58,17 +58,17 @@
       "canControl": true,
       "energy": {
         "supported": true,
-        "powerW": 96.64,
-        "voltageV": 230.28,
-        "currentA": 0.55,
-        "todayKWh": 0.02145823701861483,
+        "powerW": 79.02,
+        "voltageV": 230.6,
+        "currentA": 0.41,
+        "todayKWh": 0.11279833338791662,
         "weekKWh": 0,
         "source": "eWeLink",
-        "todaySource": "本机功率积分估算 · 从首次采集开始",
+        "todaySource": "云端未返回日累计；等待有效功率或月累计采样",
         "weekSource": "云端周统计仅部分型号提供；等待本机每日累计",
-        "updatedAt": "2026-11-25T11:04:04.17259063+08:00"
+        "updatedAt": "2026-11-26T08:34:14.844118545+08:00"
       },
-      "lastSeen": "2026-11-25T11:02:51.190165479+08:00",
+      "lastSeen": "2026-11-25T05:04:45.200890717Z",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.277178402+08:00"
     },
@@ -151,12 +151,12 @@
     },
     {
       "id": "xiaomi-234301087",
-      "accountId": "a04e929e7567fb21",
+      "accountId": "c9b9bc8f8ce42706",
       "remoteId": "234301087",
       "name": "小冰箱",
       "brand": "小米",
       "model": "chuangmi.plug.m3",
-      "room": "未分区",
+      "room": "卧室",
       "category": "插座",
       "protocol": "xiaomi-cloud",
       "online": true,
@@ -187,13 +187,13 @@
       "energy": {
         "supported": true,
         "source": "小米 MIoT",
-        "updatedAt": "2026-11-25T11:04:04.275638365+08:00"
+        "updatedAt": "2026-11-26T08:34:15.202306503+08:00"
       },
       "attributes": [
         {
           "key": "temperature",
           "label": "温度",
-          "value": "32",
+          "value": "37",
           "unit": "°C"
         },
         {
@@ -207,26 +207,4369 @@
           "value": "开启"
         }
       ],
-      "value": "温度 32°C · 开关状态 开启",
-      "lastSeen": "2026-11-25T11:03:15.282934431+08:00",
+      "value": "温度 37°C · 开关状态 开启",
+      "lastSeen": "2026-11-26T08:33:29.435304069+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:27:08.251641356+08:00"
     },
     {
-      "id": "xiaomi-blt-3-1lt8e7eeoco01",
-      "accountId": "a04e929e7567fb21",
-      "remoteId": "blt.3.1lt8e7eeoco01",
-      "name": "温湿度计",
+      "id": "xiaomi-127947968",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "127947968",
+      "name": "总插座",
       "brand": "小米",
-      "model": "miaomiaoce.sensor_ht.t2",
+      "model": "chuangmi.plug.m3",
+      "room": "卧室",
+      "category": "插座",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "power": true,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 1,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:3:1",
+          "kind": "property",
+          "name": "指示灯",
+          "description": "Switch Status",
+          "siid": 3,
+          "piid": 1,
+          "format": "bool",
+          "value": true
+        }
+      ],
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-26T08:34:15.251201527+08:00"
+      },
+      "attributes": [
+        {
+          "key": "temperature",
+          "label": "温度",
+          "value": "37",
+          "unit": "°C"
+        },
+        {
+          "key": "indicator_light",
+          "label": "指示灯",
+          "value": "开启"
+        },
+        {
+          "key": "on",
+          "label": "开关状态",
+          "value": "开启"
+        }
+      ],
+      "value": "温度 37°C · 开关状态 开启",
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083458263Z"
+    },
+    {
+      "id": "xiaomi-553164670",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "553164670",
+      "name": "米家智能显示器挂灯1S",
+      "brand": "小米",
+      "model": "yeelink.light.lamp22",
+      "room": "卧室",
+      "category": "影音设备",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "power": false,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:2:2",
+          "kind": "property",
+          "name": "Brightness",
+          "description": "Brightness",
+          "siid": 2,
+          "piid": 2,
+          "format": "uint8",
+          "value": 100
+        },
+        {
+          "id": "prop:2:3",
+          "kind": "property",
+          "name": "Color Temperature",
+          "description": "Color Temperature",
+          "siid": 2,
+          "piid": 3,
+          "format": "uint32",
+          "value": 4000
+        },
+        {
+          "id": "prop:2:4",
+          "kind": "property",
+          "name": "Default Power On State",
+          "description": "Default Power On State",
+          "siid": 2,
+          "piid": 4,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:2:5",
+          "kind": "property",
+          "name": "Mode",
+          "description": "Mode",
+          "siid": 2,
+          "piid": 5,
+          "format": "uint8",
+          "value": 5,
+          "options": [
+            {
+              "value": 5,
+              "label": "Reading"
+            },
+            {
+              "value": 6,
+              "label": "Office"
+            },
+            {
+              "value": 7,
+              "label": "Leisure"
+            },
+            {
+              "value": 8,
+              "label": "Warmth"
+            },
+            {
+              "value": 9,
+              "label": "Computer"
+            }
+          ]
+        },
+        {
+          "id": "action:2:1",
+          "kind": "action",
+          "name": "Toggle",
+          "description": "Toggle",
+          "siid": 2,
+          "aiid": 1
+        },
+        {
+          "id": "prop:3:1",
+          "kind": "property",
+          "name": "save-state",
+          "description": "save-state",
+          "siid": 3,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:3:2",
+          "kind": "property",
+          "name": "delay-time",
+          "description": "delay-time",
+          "siid": 3,
+          "piid": 2,
+          "format": "uint8",
+          "value": 15
+        },
+        {
+          "id": "prop:3:4",
+          "kind": "property",
+          "name": "delay-off-enable",
+          "description": "delay-off-enable",
+          "siid": 3,
+          "piid": 4,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:3:6",
+          "kind": "property",
+          "name": "double-click-enable",
+          "description": "double-click-enable",
+          "siid": 3,
+          "piid": 6,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:3:7",
+          "kind": "property",
+          "name": "double-click",
+          "description": "double-click",
+          "siid": 3,
+          "piid": 7,
+          "format": "uint8",
+          "value": 1,
+          "options": [
+            {
+              "value": 1,
+              "label": "Start Pomodoro Mode"
+            },
+            {
+              "value": 2,
+              "label": "Start Delay Off"
+            }
+          ]
+        },
+        {
+          "id": "prop:3:8",
+          "kind": "property",
+          "name": "long-press-enable",
+          "description": "long-press-enable",
+          "siid": 3,
+          "piid": 8,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:3:9",
+          "kind": "property",
+          "name": "scene-mode",
+          "description": "scene-mode",
+          "siid": 3,
+          "piid": 9,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "Free Mode"
+            },
+            {
+              "value": 1,
+              "label": "My Mode 1"
+            },
+            {
+              "value": 2,
+              "label": "My Mode 2"
+            },
+            {
+              "value": 3,
+              "label": "My Mode 3"
+            },
+            {
+              "value": 4,
+              "label": "My Mode 4"
+            },
+            {
+              "value": 5,
+              "label": "Reading Mode"
+            },
+            {
+              "value": 6,
+              "label": "Working Mode"
+            },
+            {
+              "value": 7,
+              "label": "Movie Mode"
+            },
+            {
+              "value": 8,
+              "label": "Warm Mode"
+            },
+            {
+              "value": 9,
+              "label": "Anti Blue-light Mode"
+            },
+            {
+              "value": 10,
+              "label": "Flow Mode"
+            }
+          ]
+        },
+        {
+          "id": "prop:3:13",
+          "kind": "property",
+          "name": "long-press-one",
+          "description": "long-press-one",
+          "siid": 3,
+          "piid": 13,
+          "format": "uint8",
+          "value": 9
+        },
+        {
+          "id": "prop:3:14",
+          "kind": "property",
+          "name": "long-press-two",
+          "description": "long-press-two",
+          "siid": 3,
+          "piid": 14,
+          "format": "uint8",
+          "value": 8
+        },
+        {
+          "id": "prop:3:15",
+          "kind": "property",
+          "name": "long-press-three",
+          "description": "long-press-three",
+          "siid": 3,
+          "piid": 15,
+          "format": "uint8",
+          "value": 5
+        },
+        {
+          "id": "prop:3:16",
+          "kind": "property",
+          "name": "work-minutes",
+          "description": "work-minutes",
+          "siid": 3,
+          "piid": 16,
+          "format": "uint8",
+          "value": 45
+        },
+        {
+          "id": "prop:3:17",
+          "kind": "property",
+          "name": "break-minutes",
+          "description": "break-minutes",
+          "siid": 3,
+          "piid": 17,
+          "format": "uint8",
+          "value": 10
+        },
+        {
+          "id": "prop:3:18",
+          "kind": "property",
+          "name": "pomodoro-enable",
+          "description": "pomodoro-enable",
+          "siid": 3,
+          "piid": 18,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:3:19",
+          "kind": "property",
+          "name": "mode-one-bright",
+          "description": "mode-one-bright",
+          "siid": 3,
+          "piid": 19,
+          "format": "uint16",
+          "value": 50
+        },
+        {
+          "id": "prop:3:20",
+          "kind": "property",
+          "name": "mode-one-ct",
+          "description": "mode-one-ct",
+          "siid": 3,
+          "piid": 20,
+          "format": "uint16",
+          "value": 4000
+        },
+        {
+          "id": "prop:3:21",
+          "kind": "property",
+          "name": "mode-two-bright",
+          "description": "mode-two-bright",
+          "siid": 3,
+          "piid": 21,
+          "format": "uint16",
+          "value": 100
+        },
+        {
+          "id": "prop:3:22",
+          "kind": "property",
+          "name": "mode-two-ct",
+          "description": "mode-two-ct",
+          "siid": 3,
+          "piid": 22,
+          "format": "uint16",
+          "value": 2700
+        },
+        {
+          "id": "prop:3:23",
+          "kind": "property",
+          "name": "mode-three-bright",
+          "description": "mode-three-bright",
+          "siid": 3,
+          "piid": 23,
+          "format": "uint16",
+          "value": 30
+        },
+        {
+          "id": "prop:3:24",
+          "kind": "property",
+          "name": "mode-three-ct",
+          "description": "mode-three-ct",
+          "siid": 3,
+          "piid": 24,
+          "format": "uint16"
+        },
+        {
+          "id": "prop:3:25",
+          "kind": "property",
+          "name": "mode-four-bright",
+          "description": "mode-four-bright",
+          "siid": 3,
+          "piid": 25,
+          "format": "uint16"
+        },
+        {
+          "id": "prop:3:26",
+          "kind": "property",
+          "name": "mode-four-ct",
+          "description": "mode-four-ct",
+          "siid": 3,
+          "piid": 26,
+          "format": "uint16"
+        },
+        {
+          "id": "prop:3:27",
+          "kind": "property",
+          "name": "ble-paired-mac",
+          "description": "ble-paired-mac",
+          "siid": 3,
+          "piid": 27,
+          "format": "string"
+        },
+        {
+          "id": "action:3:1",
+          "kind": "action",
+          "name": "set-default",
+          "description": "set-default",
+          "siid": 3,
+          "aiid": 1
+        },
+        {
+          "id": "action:3:2",
+          "kind": "action",
+          "name": "delay-off",
+          "description": "delay-off",
+          "siid": 3,
+          "aiid": 2,
+          "inputs": [
+            {
+              "name": "delay-time",
+              "format": "uint8"
+            }
+          ]
+        },
+        {
+          "id": "action:3:3",
+          "kind": "action",
+          "name": "bright-increase",
+          "description": "bright-increase",
+          "siid": 3,
+          "aiid": 3
+        },
+        {
+          "id": "action:3:4",
+          "kind": "action",
+          "name": "bright-decrease",
+          "description": "bright-decrease",
+          "siid": 3,
+          "aiid": 4
+        },
+        {
+          "id": "action:3:5",
+          "kind": "action",
+          "name": "bright-circle",
+          "description": "bright-circle",
+          "siid": 3,
+          "aiid": 5
+        },
+        {
+          "id": "action:3:6",
+          "kind": "action",
+          "name": "bright-on-circle",
+          "description": "bright-on-circle",
+          "siid": 3,
+          "aiid": 6
+        },
+        {
+          "id": "action:3:7",
+          "kind": "action",
+          "name": "ct-increase",
+          "description": "ct-increase",
+          "siid": 3,
+          "aiid": 7
+        },
+        {
+          "id": "action:3:8",
+          "kind": "action",
+          "name": "ct-decrease",
+          "description": "ct-decrease",
+          "siid": 3,
+          "aiid": 8
+        },
+        {
+          "id": "action:3:9",
+          "kind": "action",
+          "name": "ct-circle",
+          "description": "ct-circle",
+          "siid": 3,
+          "aiid": 9
+        },
+        {
+          "id": "action:3:10",
+          "kind": "action",
+          "name": "ct-on-circle",
+          "description": "ct-on-circle",
+          "siid": 3,
+          "aiid": 10
+        },
+        {
+          "id": "action:3:13",
+          "kind": "action",
+          "name": "long-press-ids-set",
+          "description": "long-press-ids-set",
+          "siid": 3,
+          "aiid": 13,
+          "inputs": [
+            {
+              "name": "long-press-one",
+              "format": "uint8"
+            },
+            {
+              "name": "long-press-two",
+              "format": "uint8"
+            },
+            {
+              "name": "long-press-three",
+              "format": "uint8"
+            }
+          ]
+        },
+        {
+          "id": "action:3:14",
+          "kind": "action",
+          "name": "long-press-ids-get",
+          "description": "long-press-ids-get",
+          "siid": 3,
+          "aiid": 14
+        },
+        {
+          "id": "action:3:15",
+          "kind": "action",
+          "name": "apply-scene",
+          "description": "apply-scene",
+          "siid": 3,
+          "aiid": 15,
+          "inputs": [
+            {
+              "name": "scene-mode",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Free Mode"
+                },
+                {
+                  "value": 1,
+                  "label": "My Mode 1"
+                },
+                {
+                  "value": 2,
+                  "label": "My Mode 2"
+                },
+                {
+                  "value": 3,
+                  "label": "My Mode 3"
+                },
+                {
+                  "value": 4,
+                  "label": "My Mode 4"
+                },
+                {
+                  "value": 5,
+                  "label": "Reading Mode"
+                },
+                {
+                  "value": 6,
+                  "label": "Working Mode"
+                },
+                {
+                  "value": 7,
+                  "label": "Movie Mode"
+                },
+                {
+                  "value": 8,
+                  "label": "Warm Mode"
+                },
+                {
+                  "value": 9,
+                  "label": "Anti Blue-light Mode"
+                },
+                {
+                  "value": 10,
+                  "label": "Flow Mode"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "attributes": [
+        {
+          "key": "on",
+          "label": "开关状态",
+          "value": "关闭"
+        },
+        {
+          "key": "color_temperature",
+          "label": "色温",
+          "value": "4000",
+          "unit": "K"
+        }
+      ],
+      "value": "开关状态 关闭 · 色温 4000K",
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083478889Z"
+    },
+    {
+      "id": "xiaomi-miwifi-2841924c-def6-6e7b-5d8e-980fc9164a5a",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "miwifi.2841924c-def6-6e7b-5d8e-980fc9164a5a",
+      "name": "yang1234",
+      "brand": "小米",
+      "model": "xiaomi.router.r3g",
+      "room": "杨永生的家",
+      "category": "网络设备",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "canControl": false,
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083490764Z"
+    },
+    {
+      "id": "xiaomi-miwifi-29736565-efe2-1035-e656-362488c75e52",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "miwifi.29736565-efe2-1035-e656-362488c75e52",
+      "name": "yang1234",
+      "brand": "小米",
+      "model": "xiaomi.router.lv1",
+      "room": "杨永生的家",
+      "category": "网络设备",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "canControl": false,
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083499472Z"
+    },
+    {
+      "id": "xiaomi-miwifi-4c79c513-79d5-8d18-0be1-771090891243",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "miwifi.4c79c513-79d5-8d18-0be1-771090891243",
+      "name": "yang1234",
+      "brand": "小米",
+      "model": "xiaomi.router.rb03",
+      "room": "杨永生的家",
+      "category": "网络设备",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:4",
+          "kind": "property",
+          "name": "Network Connection Type",
+          "description": "Network Connection Type",
+          "siid": 2,
+          "piid": 4,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 1,
+              "label": "Auto"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:8",
+          "kind": "property",
+          "name": "PPPOE Username",
+          "description": "PPPOE Username",
+          "siid": 2,
+          "piid": 8,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:10",
+          "kind": "property",
+          "name": "Static IP Address",
+          "description": "Static IP Address",
+          "siid": 2,
+          "piid": 10,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:11",
+          "kind": "property",
+          "name": "Subnet Mask",
+          "description": "Subnet Mask",
+          "siid": 2,
+          "piid": 11,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:12",
+          "kind": "property",
+          "name": "Gateway IP Address",
+          "description": "Gateway IP Address",
+          "siid": 2,
+          "piid": 12,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:13",
+          "kind": "property",
+          "name": "DNS IP Address",
+          "description": "DNS IP Address",
+          "siid": 2,
+          "piid": 13,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:14",
+          "kind": "property",
+          "name": "DNS Auto Mode",
+          "description": "DNS Auto Mode",
+          "siid": 2,
+          "piid": 14,
+          "format": "bool"
+        },
+        {
+          "id": "prop:2:15",
+          "kind": "property",
+          "name": "Access Mode",
+          "description": "Access Mode",
+          "siid": 2,
+          "piid": 15,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:17",
+          "kind": "property",
+          "name": "WiFi Band Combine",
+          "description": "WiFi Band Combine",
+          "siid": 2,
+          "piid": 17,
+          "format": "bool"
+        },
+        {
+          "id": "action:2:1",
+          "kind": "action",
+          "name": "Reboot",
+          "description": "Reboot",
+          "siid": 2,
+          "aiid": 1
+        },
+        {
+          "id": "prop:3:3",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 3,
+          "piid": 3,
+          "format": "bool"
+        },
+        {
+          "id": "prop:3:5",
+          "kind": "property",
+          "name": "Encrypted Strength",
+          "description": "Encrypted Strength",
+          "siid": 3,
+          "piid": 5,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:3:6",
+          "kind": "property",
+          "name": "Signal Strength",
+          "description": "Signal Strength",
+          "siid": 3,
+          "piid": 6,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:3:7",
+          "kind": "property",
+          "name": "WiFi Channel",
+          "description": "WiFi Channel",
+          "siid": 3,
+          "piid": 7,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:3:8",
+          "kind": "property",
+          "name": "WiFi Bandwidth",
+          "description": "WiFi Bandwidth",
+          "siid": 3,
+          "piid": 8,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:4:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 4,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:4:4",
+          "kind": "property",
+          "name": "Encrypted Strength",
+          "description": "Encrypted Strength",
+          "siid": 4,
+          "piid": 4,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:4:5",
+          "kind": "property",
+          "name": "Signal Strength",
+          "description": "Signal Strength",
+          "siid": 4,
+          "piid": 5,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:4:6",
+          "kind": "property",
+          "name": "WiFi Channel",
+          "description": "WiFi Channel",
+          "siid": 4,
+          "piid": 6,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:4:7",
+          "kind": "property",
+          "name": "WiFi Bandwidth",
+          "description": "WiFi Bandwidth",
+          "siid": 4,
+          "piid": 7,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:4:8",
+          "kind": "property",
+          "name": "Speed Control",
+          "description": "Speed Control",
+          "siid": 4,
+          "piid": 8,
+          "format": "bool"
+        },
+        {
+          "id": "prop:4:9",
+          "kind": "property",
+          "name": "Max Upload Speed",
+          "description": "Max Upload Speed",
+          "siid": 4,
+          "piid": 9,
+          "format": "uint32"
+        },
+        {
+          "id": "prop:4:10",
+          "kind": "property",
+          "name": "Max Download Speed",
+          "description": "Max Download Speed",
+          "siid": 4,
+          "piid": 10,
+          "format": "uint32"
+        },
+        {
+          "id": "prop:5:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 5,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:5:2",
+          "kind": "property",
+          "name": "Mode",
+          "description": "Mode",
+          "siid": 5,
+          "piid": 2,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Auto"
+            }
+          ]
+        },
+        {
+          "id": "prop:5:3",
+          "kind": "property",
+          "name": "Brightness",
+          "description": "Brightness",
+          "siid": 5,
+          "piid": 3,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:5:4",
+          "kind": "property",
+          "name": "Color",
+          "description": "Color",
+          "siid": 5,
+          "piid": 4,
+          "format": "uint32"
+        },
+        {
+          "id": "prop:5:5",
+          "kind": "property",
+          "name": "Color Temperature",
+          "description": "Color Temperature",
+          "siid": 5,
+          "piid": 5,
+          "format": "uint32"
+        },
+        {
+          "id": "prop:5:6",
+          "kind": "property",
+          "name": "Flow",
+          "description": "Flow",
+          "siid": 5,
+          "piid": 6,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Auto"
+            }
+          ]
+        },
+        {
+          "id": "prop:5:7",
+          "kind": "property",
+          "name": "Saturability",
+          "description": "Saturability",
+          "siid": 5,
+          "piid": 7,
+          "format": "uint8"
+        }
+      ],
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083508139Z"
+    },
+    {
+      "id": "xiaomi-miwifi-54470020-6d5c-5e7a-f406-6b589be2533a",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "miwifi.54470020-6d5c-5e7a-f406-6b589be2533a",
+      "name": "yang1234",
+      "brand": "小米",
+      "model": "xiaomi.router.ra67",
+      "room": "杨永生的家",
+      "category": "网络设备",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:4",
+          "kind": "property",
+          "name": "Network Connection Type",
+          "description": "Network Connection Type",
+          "siid": 2,
+          "piid": 4,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 1,
+              "label": "Auto"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:8",
+          "kind": "property",
+          "name": "PPPOE Username",
+          "description": "PPPOE Username",
+          "siid": 2,
+          "piid": 8,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:10",
+          "kind": "property",
+          "name": "Static IP Address",
+          "description": "Static IP Address",
+          "siid": 2,
+          "piid": 10,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:11",
+          "kind": "property",
+          "name": "Subnet Mask",
+          "description": "Subnet Mask",
+          "siid": 2,
+          "piid": 11,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:12",
+          "kind": "property",
+          "name": "Gateway IP Address",
+          "description": "Gateway IP Address",
+          "siid": 2,
+          "piid": 12,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:13",
+          "kind": "property",
+          "name": "DNS IP Address",
+          "description": "DNS IP Address",
+          "siid": 2,
+          "piid": 13,
+          "format": "string"
+        },
+        {
+          "id": "prop:2:14",
+          "kind": "property",
+          "name": "DNS Auto Mode",
+          "description": "DNS Auto Mode",
+          "siid": 2,
+          "piid": 14,
+          "format": "bool"
+        },
+        {
+          "id": "prop:2:15",
+          "kind": "property",
+          "name": "Access Mode",
+          "description": "Access Mode",
+          "siid": 2,
+          "piid": 15,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:17",
+          "kind": "property",
+          "name": "WiFi Band Combine",
+          "description": "WiFi Band Combine",
+          "siid": 2,
+          "piid": 17,
+          "format": "bool"
+        },
+        {
+          "id": "action:2:1",
+          "kind": "action",
+          "name": "Reboot",
+          "description": "Reboot",
+          "siid": 2,
+          "aiid": 1
+        },
+        {
+          "id": "prop:3:3",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 3,
+          "piid": 3,
+          "format": "bool"
+        },
+        {
+          "id": "prop:3:5",
+          "kind": "property",
+          "name": "Encrypted Strength",
+          "description": "Encrypted Strength",
+          "siid": 3,
+          "piid": 5,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:3:6",
+          "kind": "property",
+          "name": "Signal Strength",
+          "description": "Signal Strength",
+          "siid": 3,
+          "piid": 6,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:3:7",
+          "kind": "property",
+          "name": "WiFi Channel",
+          "description": "WiFi Channel",
+          "siid": 3,
+          "piid": 7,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:3:8",
+          "kind": "property",
+          "name": "WiFi Bandwidth",
+          "description": "WiFi Bandwidth",
+          "siid": 3,
+          "piid": 8,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:4:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 4,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:4:4",
+          "kind": "property",
+          "name": "Encrypted Strength",
+          "description": "Encrypted Strength",
+          "siid": 4,
+          "piid": 4,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:4:5",
+          "kind": "property",
+          "name": "Signal Strength",
+          "description": "Signal Strength",
+          "siid": 4,
+          "piid": 5,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "0"
+            }
+          ]
+        },
+        {
+          "id": "prop:4:6",
+          "kind": "property",
+          "name": "WiFi Channel",
+          "description": "WiFi Channel",
+          "siid": 4,
+          "piid": 6,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:4:7",
+          "kind": "property",
+          "name": "WiFi Bandwidth",
+          "description": "WiFi Bandwidth",
+          "siid": 4,
+          "piid": 7,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:4:8",
+          "kind": "property",
+          "name": "Speed Control",
+          "description": "Speed Control",
+          "siid": 4,
+          "piid": 8,
+          "format": "bool"
+        },
+        {
+          "id": "prop:4:9",
+          "kind": "property",
+          "name": "Max Upload Speed",
+          "description": "Max Upload Speed",
+          "siid": 4,
+          "piid": 9,
+          "format": "uint32"
+        },
+        {
+          "id": "prop:4:10",
+          "kind": "property",
+          "name": "Max Download Speed",
+          "description": "Max Download Speed",
+          "siid": 4,
+          "piid": 10,
+          "format": "uint32"
+        },
+        {
+          "id": "prop:5:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 5,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:5:2",
+          "kind": "property",
+          "name": "Mode",
+          "description": "Mode",
+          "siid": 5,
+          "piid": 2,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Auto"
+            }
+          ]
+        },
+        {
+          "id": "prop:5:3",
+          "kind": "property",
+          "name": "Brightness",
+          "description": "Brightness",
+          "siid": 5,
+          "piid": 3,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:5:4",
+          "kind": "property",
+          "name": "Color",
+          "description": "Color",
+          "siid": 5,
+          "piid": 4,
+          "format": "uint32"
+        },
+        {
+          "id": "prop:5:5",
+          "kind": "property",
+          "name": "Color Temperature",
+          "description": "Color Temperature",
+          "siid": 5,
+          "piid": 5,
+          "format": "uint32"
+        },
+        {
+          "id": "prop:5:6",
+          "kind": "property",
+          "name": "Flow",
+          "description": "Flow",
+          "siid": 5,
+          "piid": 6,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Auto"
+            }
+          ]
+        },
+        {
+          "id": "prop:5:7",
+          "kind": "property",
+          "name": "Saturability",
+          "description": "Saturability",
+          "siid": 5,
+          "piid": 7,
+          "format": "uint8"
+        }
+      ],
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083519805Z"
+    },
+    {
+      "id": "xiaomi-100649873",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "100649873",
+      "name": "小爱触屏音箱",
+      "brand": "小米",
+      "model": "xiaomi.wifispeaker.lx04",
+      "room": "杨永生的家",
+      "category": "音箱",
+      "protocol": "xiaomi-cloud",
+      "online": false,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "Volume",
+          "description": "Volume",
+          "siid": 2,
+          "piid": 1,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:2:2",
+          "kind": "property",
+          "name": "Mute",
+          "description": "Mute",
+          "siid": 2,
+          "piid": 2,
+          "format": "bool"
+        },
+        {
+          "id": "action:3:1",
+          "kind": "action",
+          "name": "Play",
+          "description": "Play",
+          "siid": 3,
+          "aiid": 1
+        },
+        {
+          "id": "action:3:2",
+          "kind": "action",
+          "name": "Pause",
+          "description": "Pause",
+          "siid": 3,
+          "aiid": 2
+        },
+        {
+          "id": "action:3:3",
+          "kind": "action",
+          "name": "Next",
+          "description": "Next",
+          "siid": 3,
+          "aiid": 3
+        },
+        {
+          "id": "action:3:4",
+          "kind": "action",
+          "name": "Previous",
+          "description": "Previous",
+          "siid": 3,
+          "aiid": 4
+        },
+        {
+          "id": "prop:4:1",
+          "kind": "property",
+          "name": "Mute",
+          "description": "Mute",
+          "siid": 4,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:5:3",
+          "kind": "property",
+          "name": "Sleep Mode",
+          "description": "Sleep Mode",
+          "siid": 5,
+          "piid": 3,
+          "format": "bool"
+        },
+        {
+          "id": "action:5:1",
+          "kind": "action",
+          "name": "Play Text",
+          "description": "Play Text",
+          "siid": 5,
+          "aiid": 1,
+          "inputs": [
+            {
+              "name": "Text Content",
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "id": "action:5:2",
+          "kind": "action",
+          "name": "Wake Up",
+          "description": "Wake Up",
+          "siid": 5,
+          "aiid": 2,
+          "inputs": [
+            {
+              "name": "Text Content",
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "id": "action:5:3",
+          "kind": "action",
+          "name": "Play Radio",
+          "description": "Play Radio",
+          "siid": 5,
+          "aiid": 3
+        },
+        {
+          "id": "action:5:4",
+          "kind": "action",
+          "name": "Execute Text Directive",
+          "description": "Execute Text Directive",
+          "siid": 5,
+          "aiid": 4,
+          "inputs": [
+            {
+              "name": "Text Content",
+              "format": "string"
+            },
+            {
+              "name": "Silent Execution",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "On"
+                },
+                {
+                  "value": 1,
+                  "label": "Off"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "action:6:1",
+          "kind": "action",
+          "name": "Stop Alarm",
+          "description": "Stop Alarm",
+          "siid": 6,
+          "aiid": 1
+        }
+      ],
+      "lastSeen": "2026-11-25T14:28:28.45367356Z",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083525389Z"
+    },
+    {
+      "id": "xiaomi-1062538724",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "1062538724",
+      "name": "米家扫拖机器人3C 增强版",
+      "brand": "小米",
+      "model": "xiaomi.vacuum.c103",
+      "room": "卧室",
+      "category": "扫地机器人",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:4",
+          "kind": "property",
+          "name": "Mode",
+          "description": "Mode",
+          "siid": 2,
+          "piid": 4,
+          "format": "uint8",
+          "value": 1,
+          "options": [
+            {
+              "value": 0,
+              "label": "Sweep"
+            },
+            {
+              "value": 1,
+              "label": "Sweep And Mop"
+            },
+            {
+              "value": 2,
+              "label": "Mop"
+            },
+            {
+              "value": 3,
+              "label": "Sweep Then Mop"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:8",
+          "kind": "property",
+          "name": "Sweep Type",
+          "description": "Sweep Type",
+          "siid": 2,
+          "piid": 8,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "Global"
+            },
+            {
+              "value": 1,
+              "label": "Mop"
+            },
+            {
+              "value": 2,
+              "label": "Edge"
+            },
+            {
+              "value": 3,
+              "label": "Area"
+            },
+            {
+              "value": 4,
+              "label": "Point"
+            },
+            {
+              "value": 5,
+              "label": "Remote"
+            },
+            {
+              "value": 6,
+              "label": "Explore"
+            },
+            {
+              "value": 7,
+              "label": "Room"
+            },
+            {
+              "value": 8,
+              "label": "Floor"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:9",
+          "kind": "property",
+          "name": "Switch Status",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 9,
+          "format": "string",
+          "value": "[1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1]"
+        },
+        {
+          "id": "prop:2:11",
+          "kind": "property",
+          "name": "Suction Level",
+          "description": "Suction Level",
+          "siid": 2,
+          "piid": 11,
+          "format": "uint8",
+          "value": 1,
+          "options": [
+            {
+              "value": 0,
+              "label": "Silent"
+            },
+            {
+              "value": 1,
+              "label": "Basic"
+            },
+            {
+              "value": 2,
+              "label": "Strong"
+            },
+            {
+              "value": 3,
+              "label": "Full Speed"
+            }
+          ]
+        },
+        {
+          "id": "action:2:1",
+          "kind": "action",
+          "name": "Start Sweep",
+          "description": "Start Sweep",
+          "siid": 2,
+          "aiid": 1
+        },
+        {
+          "id": "action:2:2",
+          "kind": "action",
+          "name": "Stop Sweeping",
+          "description": "Stop Sweeping",
+          "siid": 2,
+          "aiid": 2
+        },
+        {
+          "id": "action:2:3",
+          "kind": "action",
+          "name": "Start Only Sweep",
+          "description": "Start Only Sweep",
+          "siid": 2,
+          "aiid": 3
+        },
+        {
+          "id": "action:2:5",
+          "kind": "action",
+          "name": "Start Sweep Mop",
+          "description": "Start Sweep Mop",
+          "siid": 2,
+          "aiid": 5
+        },
+        {
+          "id": "action:2:6",
+          "kind": "action",
+          "name": "Start Mop",
+          "description": "Start Mop",
+          "siid": 2,
+          "aiid": 6
+        },
+        {
+          "id": "action:2:7",
+          "kind": "action",
+          "name": "Start Room Sweep",
+          "description": "Start Room Sweep",
+          "siid": 2,
+          "aiid": 7,
+          "inputs": [
+            {
+              "name": "Room IDs",
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "id": "action:2:11",
+          "kind": "action",
+          "name": "Start Vacuum Room Sweep",
+          "description": "Start Vacuum Room Sweep",
+          "siid": 2,
+          "aiid": 11,
+          "inputs": [
+            {
+              "name": "Room IDs",
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "id": "action:3:1",
+          "kind": "action",
+          "name": "Start Charge",
+          "description": "Start Charge",
+          "siid": 3,
+          "aiid": 1
+        },
+        {
+          "id": "prop:4:1",
+          "kind": "property",
+          "name": "Alarm",
+          "description": "Alarm",
+          "siid": 4,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:4:2",
+          "kind": "property",
+          "name": "Volume",
+          "description": "Volume",
+          "siid": 4,
+          "piid": 2,
+          "format": "uint8",
+          "value": 4
+        },
+        {
+          "id": "prop:7:1",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 1,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:5",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 5,
+          "format": "uint8",
+          "value": 1,
+          "options": [
+            {
+              "value": 0,
+              "label": "Silent"
+            },
+            {
+              "value": 1,
+              "label": "Standard"
+            },
+            {
+              "value": 2,
+              "label": "Medium"
+            },
+            {
+              "value": 3,
+              "label": "Turbo"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:6",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 6,
+          "format": "uint8",
+          "value": 2,
+          "options": [
+            {
+              "value": 0,
+              "label": "Low"
+            },
+            {
+              "value": 1,
+              "label": "Mid"
+            },
+            {
+              "value": 2,
+              "label": "Hig"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:7",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 7,
+          "format": "uint8",
+          "value": 1,
+          "options": [
+            {
+              "value": 0,
+              "label": "S"
+            },
+            {
+              "value": 1,
+              "label": "Y"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:16",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 16,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 1,
+              "label": "Forward"
+            },
+            {
+              "value": 2,
+              "label": "Left"
+            },
+            {
+              "value": 3,
+              "label": "Right"
+            },
+            {
+              "value": 4,
+              "label": "Back"
+            },
+            {
+              "value": 5,
+              "label": "Stop"
+            },
+            {
+              "value": 10,
+              "label": "Exit"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:20",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 20,
+          "format": "int32",
+          "value": -28800
+        },
+        {
+          "id": "prop:7:21",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 21,
+          "format": "string",
+          "value": "zh_CN"
+        },
+        {
+          "id": "prop:7:35",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 35,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:36",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 36,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:42",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 42,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:44",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 44,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:47",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 47,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:48",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 48,
+          "format": "uint8",
+          "value": 1,
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:49",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 49,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:50",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 50,
+          "format": "uint8",
+          "value": 3,
+          "options": [
+            {
+              "value": 1,
+              "label": "Low"
+            },
+            {
+              "value": 2,
+              "label": "Mid"
+            },
+            {
+              "value": 3,
+              "label": "High"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:52",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 52,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:57",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 57,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "prop:7:58",
+          "kind": "property",
+          "name": "设备操作",
+          "siid": 7,
+          "piid": 58,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Close"
+            },
+            {
+              "value": 1,
+              "label": "Open"
+            }
+          ]
+        },
+        {
+          "id": "action:7:2",
+          "kind": "action",
+          "name": "set-calibration",
+          "description": "set-calibration",
+          "siid": 7,
+          "aiid": 2
+        },
+        {
+          "id": "action:7:3",
+          "kind": "action",
+          "name": "set-room-clean",
+          "description": "set-room-clean",
+          "siid": 7,
+          "aiid": 3,
+          "inputs": [
+            {
+              "name": "参数 1",
+              "format": "string"
+            },
+            {
+              "name": "参数 2",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Global"
+                },
+                {
+                  "value": 1,
+                  "label": "Edge"
+                }
+              ]
+            },
+            {
+              "name": "参数 3",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Stop"
+                },
+                {
+                  "value": 1,
+                  "label": "Start"
+                },
+                {
+                  "value": 2,
+                  "label": "Pause"
+                },
+                {
+                  "value": 3,
+                  "label": "Fake Pause"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "action:7:4",
+          "kind": "action",
+          "name": "set-preference-clean",
+          "description": "set-preference-clean",
+          "siid": 7,
+          "aiid": 4,
+          "inputs": [
+            {
+              "name": "参数 1",
+              "format": "string"
+            },
+            {
+              "name": "参数 2",
+              "format": "uint32"
+            }
+          ]
+        },
+        {
+          "id": "action:7:5",
+          "kind": "action",
+          "name": "get-preference-clean",
+          "description": "get-preference-clean",
+          "siid": 7,
+          "aiid": 5,
+          "inputs": [
+            {
+              "name": "参数 1",
+              "format": "uint32"
+            }
+          ]
+        },
+        {
+          "id": "action:7:6",
+          "kind": "action",
+          "name": "set-preference-type",
+          "description": "set-preference-type",
+          "siid": 7,
+          "aiid": 6,
+          "inputs": [
+            {
+              "name": "参数 1",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Auto"
+                },
+                {
+                  "value": 1,
+                  "label": "Room"
+                },
+                {
+                  "value": 2,
+                  "label": "Material"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "action:7:7",
+          "kind": "action",
+          "name": "set-go-charging",
+          "description": "set-go-charging",
+          "siid": 7,
+          "aiid": 7,
+          "inputs": [
+            {
+              "name": "go-charging",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Stop"
+                },
+                {
+                  "value": 1,
+                  "label": "Start"
+                },
+                {
+                  "value": 2,
+                  "label": "None"
+                },
+                {
+                  "value": 3,
+                  "label": "No Use"
+                },
+                {
+                  "value": 4,
+                  "label": "Finish And Recharge"
+                },
+                {
+                  "value": 5,
+                  "label": "Backwash Mop"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "action:7:9",
+          "kind": "action",
+          "name": "set-preference-ii",
+          "description": "set-preference-ii",
+          "siid": 7,
+          "aiid": 9,
+          "inputs": [
+            {
+              "name": "参数 1",
+              "format": "string"
+            },
+            {
+              "name": "参数 2",
+              "format": "uint32"
+            }
+          ]
+        },
+        {
+          "id": "action:7:10",
+          "kind": "action",
+          "name": "get-preference-ii",
+          "description": "get-preference-ii",
+          "siid": 7,
+          "aiid": 10,
+          "inputs": [
+            {
+              "name": "参数 1",
+              "format": "uint32"
+            }
+          ]
+        },
+        {
+          "id": "action:7:11",
+          "kind": "action",
+          "name": "set-listening-voice",
+          "description": "set-listening-voice",
+          "siid": 7,
+          "aiid": 11
+        },
+        {
+          "id": "action:8:1",
+          "kind": "action",
+          "name": "add",
+          "description": "add",
+          "siid": 8,
+          "aiid": 1,
+          "inputs": [
+            {
+              "name": "order-id",
+              "format": "int64"
+            },
+            {
+              "name": "参数 2"
+            },
+            {
+              "name": "参数 3"
+            },
+            {
+              "name": "参数 4"
+            },
+            {
+              "name": "参数 5"
+            },
+            {
+              "name": "参数 6"
+            },
+            {
+              "name": "参数 7"
+            },
+            {
+              "name": "参数 8"
+            },
+            {
+              "name": "参数 9"
+            },
+            {
+              "name": "参数 10"
+            }
+          ]
+        },
+        {
+          "id": "action:8:2",
+          "kind": "action",
+          "name": "del",
+          "description": "del",
+          "siid": 8,
+          "aiid": 2,
+          "inputs": [
+            {
+              "name": "order-id",
+              "format": "int64"
+            }
+          ]
+        },
+        {
+          "id": "action:8:3",
+          "kind": "action",
+          "name": "get",
+          "description": "get",
+          "siid": 8,
+          "aiid": 3
+        },
+        {
+          "id": "action:8:4",
+          "kind": "action",
+          "name": "add-ii",
+          "description": "add-ii",
+          "siid": 8,
+          "aiid": 4,
+          "inputs": [
+            {
+              "name": "order-id",
+              "format": "int64"
+            },
+            {
+              "name": "参数 2"
+            },
+            {
+              "name": "参数 3"
+            },
+            {
+              "name": "参数 4"
+            },
+            {
+              "name": "参数 5"
+            },
+            {
+              "name": "参数 6"
+            },
+            {
+              "name": "参数 7"
+            },
+            {
+              "name": "参数 8"
+            },
+            {
+              "name": "参数 9"
+            },
+            {
+              "name": "参数 10"
+            },
+            {
+              "name": "参数 11"
+            },
+            {
+              "name": "参数 12"
+            }
+          ]
+        },
+        {
+          "id": "action:8:5",
+          "kind": "action",
+          "name": "get-map-order-count",
+          "description": "get-map-order-count",
+          "siid": 8,
+          "aiid": 5,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        },
+        {
+          "id": "action:9:1",
+          "kind": "action",
+          "name": "start-point-clean",
+          "description": "start-point-clean",
+          "siid": 9,
+          "aiid": 1
+        },
+        {
+          "id": "action:9:2",
+          "kind": "action",
+          "name": "pause-point-clean",
+          "description": "pause-point-clean",
+          "siid": 9,
+          "aiid": 2,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        },
+        {
+          "id": "action:9:3",
+          "kind": "action",
+          "name": "start-zone-clean",
+          "description": "start-zone-clean",
+          "siid": 9,
+          "aiid": 3
+        },
+        {
+          "id": "action:9:4",
+          "kind": "action",
+          "name": "pause-zone-clean",
+          "description": "pause-zone-clean",
+          "siid": 9,
+          "aiid": 4,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        },
+        {
+          "id": "action:9:5",
+          "kind": "action",
+          "name": "set-beauty-wall",
+          "description": "set-beauty-wall",
+          "siid": 9,
+          "aiid": 5,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        },
+        {
+          "id": "action:9:6",
+          "kind": "action",
+          "name": "set-virtual-wall",
+          "description": "set-virtual-wall",
+          "siid": 9,
+          "aiid": 6,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        },
+        {
+          "id": "action:9:8",
+          "kind": "action",
+          "name": "set-zone-point",
+          "description": "set-zone-point",
+          "siid": 9,
+          "aiid": 8,
+          "inputs": [
+            {
+              "name": "参数 1",
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "id": "action:9:9",
+          "kind": "action",
+          "name": "start-point-clean-ii",
+          "description": "start-point-clean-ii",
+          "siid": 9,
+          "aiid": 9,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        },
+        {
+          "id": "action:10:1",
+          "kind": "action",
+          "name": "get-map-list",
+          "description": "get-map-list",
+          "siid": 10,
+          "aiid": 1
+        },
+        {
+          "id": "action:10:2",
+          "kind": "action",
+          "name": "upload-by-mapid",
+          "description": "upload-by-mapid",
+          "siid": 10,
+          "aiid": 2,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        },
+        {
+          "id": "action:10:3",
+          "kind": "action",
+          "name": "set-cur-map",
+          "description": "set-cur-map",
+          "siid": 10,
+          "aiid": 3,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        },
+        {
+          "id": "action:10:4",
+          "kind": "action",
+          "name": "del-map",
+          "description": "del-map",
+          "siid": 10,
+          "aiid": 4,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        },
+        {
+          "id": "action:10:5",
+          "kind": "action",
+          "name": "rename-map",
+          "description": "rename-map",
+          "siid": 10,
+          "aiid": 5,
+          "inputs": [
+            {
+              "name": "参数 1"
+            },
+            {
+              "name": "参数 2"
+            }
+          ]
+        },
+        {
+          "id": "action:10:6",
+          "kind": "action",
+          "name": "upload-by-maptype",
+          "description": "upload-by-maptype",
+          "siid": 10,
+          "aiid": 6,
+          "inputs": [
+            {
+              "name": "参数 1"
+            }
+          ]
+        }
+      ],
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-26T08:34:15.083536145+08:00"
+      },
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083537681Z"
+    },
+    {
+      "id": "xiaomi-106704263",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "106704263",
+      "name": "KFR-35GW 米家互联网空调 1.5p",
+      "brand": "小米",
+      "model": "zhimi.aircondition.ma4",
+      "room": "卧室",
+      "category": "空调",
+      "protocol": "xiaomi-cloud",
+      "online": false,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:2:2",
+          "kind": "property",
+          "name": "Mode",
+          "description": "Mode",
+          "siid": 2,
+          "piid": 2,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Auto"
+            },
+            {
+              "value": 1,
+              "label": "Cool"
+            },
+            {
+              "value": 2,
+              "label": "Dry"
+            },
+            {
+              "value": 3,
+              "label": "Heat"
+            },
+            {
+              "value": 4,
+              "label": "Fan"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:3",
+          "kind": "property",
+          "name": "Target Temperature",
+          "description": "Target Temperature",
+          "siid": 2,
+          "piid": 3,
+          "format": "float"
+        },
+        {
+          "id": "prop:2:4",
+          "kind": "property",
+          "name": "Heater",
+          "description": "Heater",
+          "siid": 2,
+          "piid": 4,
+          "format": "bool"
+        },
+        {
+          "id": "prop:2:5",
+          "kind": "property",
+          "name": "Sleep Mode",
+          "description": "Sleep Mode",
+          "siid": 2,
+          "piid": 5,
+          "format": "bool"
+        },
+        {
+          "id": "prop:3:1",
+          "kind": "property",
+          "name": "Fan Level",
+          "description": "Fan Level",
+          "siid": 3,
+          "piid": 1,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Auto"
+            },
+            {
+              "value": 1,
+              "label": "Level1"
+            },
+            {
+              "value": 2,
+              "label": "Level2"
+            },
+            {
+              "value": 3,
+              "label": "Level3"
+            },
+            {
+              "value": 4,
+              "label": "Level4"
+            },
+            {
+              "value": 5,
+              "label": "Level5"
+            }
+          ]
+        },
+        {
+          "id": "prop:3:2",
+          "kind": "property",
+          "name": "Vertical Swing",
+          "description": "Vertical Swing",
+          "siid": 3,
+          "piid": 2,
+          "format": "bool"
+        },
+        {
+          "id": "prop:3:3",
+          "kind": "property",
+          "name": "Vertical Angle",
+          "description": "Vertical Angle",
+          "siid": 3,
+          "piid": 3,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:5:1",
+          "kind": "property",
+          "name": "Alarm",
+          "description": "Alarm",
+          "siid": 5,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:6:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 6,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:6:2",
+          "kind": "property",
+          "name": "Brightness",
+          "description": "Brightness",
+          "siid": 6,
+          "piid": 2,
+          "format": "uint8"
+        }
+      ],
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-25T14:28:27.967127488Z"
+      },
+      "lastSeen": "2026-11-25T14:28:28.453720811Z",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083547264Z"
+    },
+    {
+      "id": "xiaomi-1149223327",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "1149223327",
+      "name": "小米智能室外摄像机 4C 3K",
+      "brand": "小米",
+      "model": "xiaomi.camera.cw301",
+      "room": "大门",
+      "category": "摄像头",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "power": true,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 1,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:2:3",
+          "kind": "property",
+          "name": "Night Shot",
+          "description": "Night Shot",
+          "siid": 2,
+          "piid": 3,
+          "format": "uint8",
+          "value": 5,
+          "options": [
+            {
+              "value": 0,
+              "label": "Off"
+            },
+            {
+              "value": 1,
+              "label": "On"
+            },
+            {
+              "value": 2,
+              "label": "Auto"
+            },
+            {
+              "value": 5,
+              "label": "Auto Smart Full Color"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:4",
+          "kind": "property",
+          "name": "Image Rollover",
+          "description": "Image Rollover",
+          "siid": 2,
+          "piid": 4,
+          "format": "uint16",
+          "value": 0
+        },
+        {
+          "id": "prop:2:5",
+          "kind": "property",
+          "name": "Time Watermark",
+          "description": "Time Watermark",
+          "siid": 2,
+          "piid": 5,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:2:8",
+          "kind": "property",
+          "name": "Motion Tracking",
+          "description": "Motion Tracking",
+          "siid": 2,
+          "piid": 8,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:2:9",
+          "kind": "property",
+          "name": "Human Tracking",
+          "description": "Human Tracking",
+          "siid": 2,
+          "piid": 9,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:2:10",
+          "kind": "property",
+          "name": "Ai Frame",
+          "description": "Ai Frame",
+          "siid": 2,
+          "piid": 10,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:2:11",
+          "kind": "property",
+          "name": "Recording Mode",
+          "description": "Recording Mode",
+          "siid": 2,
+          "piid": 11,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "No Record"
+            },
+            {
+              "value": 1,
+              "label": "Motion Record"
+            },
+            {
+              "value": 2,
+              "label": "All Record"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:16",
+          "kind": "property",
+          "name": "manual-sound-and-light-warning",
+          "description": "manual-sound-and-light-warning",
+          "siid": 2,
+          "piid": 16,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "action:2:2",
+          "kind": "action",
+          "name": "Restart Device",
+          "description": "Restart Device",
+          "siid": 2,
+          "aiid": 2
+        },
+        {
+          "id": "action:2:1",
+          "kind": "action",
+          "name": "PTZ Calibrate",
+          "description": "PTZ Calibrate",
+          "siid": 2,
+          "aiid": 1
+        },
+        {
+          "id": "prop:3:5",
+          "kind": "property",
+          "name": "dialog-ejected",
+          "description": "dialog-ejected",
+          "siid": 3,
+          "piid": 5,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "action:3:2",
+          "kind": "action",
+          "name": "Pop Up",
+          "description": "Pop Up",
+          "siid": 3,
+          "aiid": 2
+        },
+        {
+          "id": "prop:5:1",
+          "kind": "property",
+          "name": "Motion Detection",
+          "description": "Motion Detection",
+          "siid": 5,
+          "piid": 1,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:5:3",
+          "kind": "property",
+          "name": "Detection Sensitivity",
+          "description": "Detection Sensitivity",
+          "siid": 5,
+          "piid": 3,
+          "format": "uint8",
+          "value": 1,
+          "options": [
+            {
+              "value": 0,
+              "label": "Low"
+            },
+            {
+              "value": 1,
+              "label": "Middle"
+            },
+            {
+              "value": 2,
+              "label": "High"
+            }
+          ]
+        },
+        {
+          "id": "prop:5:4",
+          "kind": "property",
+          "name": "Motion Detection Start Time",
+          "description": "Motion Detection Start Time",
+          "siid": 5,
+          "piid": 4,
+          "format": "string",
+          "value": "00:00:00"
+        },
+        {
+          "id": "prop:5:5",
+          "kind": "property",
+          "name": "Motion Detection End Time",
+          "description": "Motion Detection End Time",
+          "siid": 5,
+          "piid": 5,
+          "format": "string",
+          "value": "23:59:59"
+        },
+        {
+          "id": "prop:5:2",
+          "kind": "property",
+          "name": "alarm-interval",
+          "description": "alarm-interval",
+          "siid": 5,
+          "piid": 2,
+          "format": "uint8",
+          "value": 10
+        },
+        {
+          "id": "prop:4:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 4,
+          "piid": 1,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:8:6",
+          "kind": "property",
+          "name": "Human Detection",
+          "description": "Human Detection",
+          "siid": 8,
+          "piid": 6,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:8:7",
+          "kind": "property",
+          "name": "Move Detection",
+          "description": "Move Detection",
+          "siid": 8,
+          "piid": 7,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:8:16",
+          "kind": "property",
+          "name": "detection-area",
+          "description": "detection-area",
+          "siid": 8,
+          "piid": 16,
+          "format": "string",
+          "value": "{\"privacy_area\":[{\"sensor0\":[{\"area\":[31.64,36.33,64.97,69.66],\"color\":0}]}]}"
+        },
+        {
+          "id": "prop:8:17",
+          "kind": "property",
+          "name": "detection-area-active",
+          "description": "detection-area-active",
+          "siid": 8,
+          "piid": 17,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:8:24",
+          "kind": "property",
+          "name": "detection-area-switch",
+          "description": "detection-area-switch",
+          "siid": 8,
+          "piid": 24,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:8:25",
+          "kind": "property",
+          "name": "detection-sensitivity",
+          "description": "detection-sensitivity",
+          "siid": 8,
+          "piid": 25,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "low"
+            },
+            {
+              "value": 1,
+              "label": "middle"
+            },
+            {
+              "value": 2,
+              "label": "high"
+            }
+          ]
+        },
+        {
+          "id": "prop:8:31",
+          "kind": "property",
+          "name": "Move Detection Sensitivity",
+          "description": "Move Detection Sensitivity",
+          "siid": 8,
+          "piid": 31,
+          "format": "uint8",
+          "value": 1,
+          "options": [
+            {
+              "value": 0,
+              "label": "Low"
+            },
+            {
+              "value": 1,
+              "label": "Middle"
+            },
+            {
+              "value": 2,
+              "label": "High"
+            }
+          ]
+        },
+        {
+          "id": "prop:8:34",
+          "kind": "property",
+          "name": "Car Detection",
+          "description": "Car Detection",
+          "siid": 8,
+          "piid": 34,
+          "format": "bool"
+        },
+        {
+          "id": "prop:8:35",
+          "kind": "property",
+          "name": "Car Detection Area",
+          "description": "Car Detection Area",
+          "siid": 8,
+          "piid": 35,
+          "format": "string"
+        },
+        {
+          "id": "prop:8:37",
+          "kind": "property",
+          "name": "Person Approaching Car Mode",
+          "description": "Person Approaching Car Mode",
+          "siid": 8,
+          "piid": 37,
+          "format": "bool"
+        },
+        {
+          "id": "prop:8:38",
+          "kind": "property",
+          "name": "Car Detected Mode",
+          "description": "Car Detected Mode",
+          "siid": 8,
+          "piid": 38,
+          "format": "bool"
+        },
+        {
+          "id": "action:9:1",
+          "kind": "action",
+          "name": "Start P2P Stream",
+          "description": "Start P2P Stream",
+          "siid": 9,
+          "aiid": 1
+        },
+        {
+          "id": "action:9:2",
+          "kind": "action",
+          "name": "Stop Camera Stream",
+          "description": "Stop Camera Stream",
+          "siid": 9,
+          "aiid": 2
+        },
+        {
+          "id": "action:9:3",
+          "kind": "action",
+          "name": "Upload Video",
+          "description": "Upload Video",
+          "siid": 9,
+          "aiid": 3
+        },
+        {
+          "id": "prop:10:1",
+          "kind": "property",
+          "name": "Fav Area",
+          "description": "Fav Area",
+          "siid": 10,
+          "piid": 1,
+          "format": "string"
+        },
+        {
+          "id": "prop:10:2",
+          "kind": "property",
+          "name": "Active Fav Area",
+          "description": "Active Fav Area",
+          "siid": 10,
+          "piid": 2,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:16:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "on",
+          "siid": 16,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:16:6",
+          "kind": "property",
+          "name": "Brightness",
+          "description": "Brightness",
+          "siid": 16,
+          "piid": 6,
+          "format": "uint8"
+        },
+        {
+          "id": "prop:17:1",
+          "kind": "property",
+          "name": "virtual-fence-switch",
+          "description": "virtual-fence-switch",
+          "siid": 17,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:17:2",
+          "kind": "property",
+          "name": "virtual-fence-area",
+          "description": "virtual-fence-area",
+          "siid": 17,
+          "piid": 2,
+          "format": "string"
+        },
+        {
+          "id": "prop:17:3",
+          "kind": "property",
+          "name": "people-fence-in",
+          "description": "people-fence-in",
+          "siid": 17,
+          "piid": 3,
+          "format": "bool"
+        },
+        {
+          "id": "action:40:1",
+          "kind": "action",
+          "name": "Start Check",
+          "description": "Start Check",
+          "siid": 40,
+          "aiid": 1,
+          "inputs": [
+            {
+              "name": "Self Check Items",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Sdcard"
+                },
+                {
+                  "value": 1,
+                  "label": "Night Vision"
+                },
+                {
+                  "value": 2,
+                  "label": "Night Vision Reset"
+                },
+                {
+                  "value": 3,
+                  "label": "PTZ"
+                },
+                {
+                  "value": 4,
+                  "label": "Frame"
+                },
+                {
+                  "value": 5,
+                  "label": "MIC"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "action:40:2",
+          "kind": "action",
+          "name": "Stop Check",
+          "description": "Stop Check",
+          "siid": 40,
+          "aiid": 2
+        },
+        {
+          "id": "action:40:3",
+          "kind": "action",
+          "name": "Sync Manual Check",
+          "description": "Sync Manual Check",
+          "siid": 40,
+          "aiid": 3,
+          "inputs": [
+            {
+              "name": "Self Check Items",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Sdcard"
+                },
+                {
+                  "value": 1,
+                  "label": "Night Vision"
+                },
+                {
+                  "value": 2,
+                  "label": "Night Vision Reset"
+                },
+                {
+                  "value": 3,
+                  "label": "PTZ"
+                },
+                {
+                  "value": 4,
+                  "label": "Frame"
+                },
+                {
+                  "value": 5,
+                  "label": "MIC"
+                }
+              ]
+            },
+            {
+              "name": "Manual Check Results",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Normal"
+                },
+                {
+                  "value": 1,
+                  "label": "Abnormal"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "attributes": [
+        {
+          "key": "on",
+          "label": "开关状态",
+          "value": "开启"
+        },
+        {
+          "key": "indicator_light",
+          "label": "指示灯",
+          "value": "开启"
+        },
+        {
+          "key": "service_on_16_1",
+          "label": "white-light状态",
+          "value": "关闭"
+        }
+      ],
+      "value": "开关状态 开启 · 指示灯 开启",
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083554972Z"
+    },
+    {
+      "id": "xiaomi-289176449",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "289176449",
+      "name": "小爱音箱Play（2019款）",
+      "brand": "小米",
+      "model": "xiaomi.wifispeaker.lx05",
+      "room": "卧室",
+      "category": "音箱",
+      "protocol": "xiaomi-cloud",
+      "online": false,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "Volume",
+          "description": "Volume",
+          "siid": 2,
+          "piid": 1,
+          "format": "uint8",
+          "value": 18
+        },
+        {
+          "id": "prop:2:2",
+          "kind": "property",
+          "name": "Mute",
+          "description": "Mute",
+          "siid": 2,
+          "piid": 2,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "action:3:1",
+          "kind": "action",
+          "name": "Play",
+          "description": "Play",
+          "siid": 3,
+          "aiid": 1
+        },
+        {
+          "id": "action:3:2",
+          "kind": "action",
+          "name": "Pause",
+          "description": "Pause",
+          "siid": 3,
+          "aiid": 2
+        },
+        {
+          "id": "action:3:3",
+          "kind": "action",
+          "name": "Next",
+          "description": "Next",
+          "siid": 3,
+          "aiid": 3
+        },
+        {
+          "id": "action:3:4",
+          "kind": "action",
+          "name": "Previous",
+          "description": "Previous",
+          "siid": 3,
+          "aiid": 4
+        },
+        {
+          "id": "prop:4:1",
+          "kind": "property",
+          "name": "Mute",
+          "description": "Mute",
+          "siid": 4,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "action:5:1",
+          "kind": "action",
+          "name": "Play Text",
+          "description": "Play Text",
+          "siid": 5,
+          "aiid": 1,
+          "inputs": [
+            {
+              "name": "Text Content",
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "id": "action:5:2",
+          "kind": "action",
+          "name": "Play Music",
+          "description": "Play Music",
+          "siid": 5,
+          "aiid": 2
+        },
+        {
+          "id": "action:5:3",
+          "kind": "action",
+          "name": "Wake Up",
+          "description": "Wake Up",
+          "siid": 5,
+          "aiid": 3
+        },
+        {
+          "id": "action:5:4",
+          "kind": "action",
+          "name": "Play Radio",
+          "description": "Play Radio",
+          "siid": 5,
+          "aiid": 4
+        },
+        {
+          "id": "action:5:5",
+          "kind": "action",
+          "name": "Execute Text Directive",
+          "description": "Execute Text Directive",
+          "siid": 5,
+          "aiid": 5,
+          "inputs": [
+            {
+              "name": "Text Content",
+              "format": "string"
+            },
+            {
+              "name": "Silent Execution",
+              "format": "bool"
+            }
+          ]
+        },
+        {
+          "id": "action:6:1",
+          "kind": "action",
+          "name": "Stop Alarm",
+          "description": "Stop Alarm",
+          "siid": 6,
+          "aiid": 1
+        }
+      ],
+      "lastSeen": "2026-11-25T14:28:28.453743311Z",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083562097Z"
+    },
+    {
+      "id": "xiaomi-566922043",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "566922043",
+      "name": "Redmi小爱触屏音箱 8",
+      "brand": "小米",
+      "model": "xiaomi.wifispeaker.x08c",
+      "room": "卧室",
+      "category": "音箱",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "action:2:1",
+          "kind": "action",
+          "name": "Pause",
+          "description": "Pause",
+          "siid": 2,
+          "aiid": 1
+        },
+        {
+          "id": "action:2:2",
+          "kind": "action",
+          "name": "Play",
+          "description": "Play",
+          "siid": 2,
+          "aiid": 2
+        },
+        {
+          "id": "action:2:3",
+          "kind": "action",
+          "name": "Next",
+          "description": "Next",
+          "siid": 2,
+          "aiid": 3
+        },
+        {
+          "id": "action:2:4",
+          "kind": "action",
+          "name": "Previous",
+          "description": "Previous",
+          "siid": 2,
+          "aiid": 4
+        },
+        {
+          "id": "prop:3:3",
+          "kind": "property",
+          "name": "Sleep Mode",
+          "description": "Sleep Mode",
+          "siid": 3,
+          "piid": 3,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "action:3:1",
+          "kind": "action",
+          "name": "Play Text",
+          "description": "Play Text",
+          "siid": 3,
+          "aiid": 1,
+          "inputs": [
+            {
+              "name": "Text Content",
+              "format": "string"
+            }
+          ]
+        },
+        {
+          "id": "action:3:2",
+          "kind": "action",
+          "name": "Wake Up",
+          "description": "Wake Up",
+          "siid": 3,
+          "aiid": 2
+        },
+        {
+          "id": "action:3:3",
+          "kind": "action",
+          "name": "Play Radio",
+          "description": "Play Radio",
+          "siid": 3,
+          "aiid": 3
+        },
+        {
+          "id": "action:3:4",
+          "kind": "action",
+          "name": "Play Music",
+          "description": "Play Music",
+          "siid": 3,
+          "aiid": 4
+        },
+        {
+          "id": "action:3:5",
+          "kind": "action",
+          "name": "Execute Text Directive",
+          "description": "Execute Text Directive",
+          "siid": 3,
+          "aiid": 5,
+          "inputs": [
+            {
+              "name": "Text Content",
+              "format": "string"
+            },
+            {
+              "name": "Silent Execution",
+              "format": "uint8",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "On"
+                },
+                {
+                  "value": 1,
+                  "label": "Off"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "prop:4:1",
+          "kind": "property",
+          "name": "Volume",
+          "description": "Volume",
+          "siid": 4,
+          "piid": 1,
+          "format": "uint8",
+          "value": 5
+        },
+        {
+          "id": "prop:4:2",
+          "kind": "property",
+          "name": "Mute",
+          "description": "Mute",
+          "siid": 4,
+          "piid": 2,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:5:1",
+          "kind": "property",
+          "name": "Mute",
+          "description": "Mute",
+          "siid": 5,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "action:6:1",
+          "kind": "action",
+          "name": "Stop Alarm",
+          "description": "Stop Alarm",
+          "siid": 6,
+          "aiid": 1
+        }
+      ],
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083568139Z"
+    },
+    {
+      "id": "xiaomi-690194440",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "690194440",
+      "name": "小米手环8 NFC版",
+      "brand": "小米",
+      "model": "miwear.watch.m66nfc",
+      "room": "杨永生的家",
+      "category": "穿戴设备",
+      "protocol": "xiaomi-cloud",
+      "online": false,
+      "canControl": false,
+      "lastSeen": "2026-11-25T14:28:28.453761019Z",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083579639Z"
+    },
+    {
+      "id": "xiaomi-707412634",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "707412634",
+      "name": "米家智能台式洗碗机5套S1",
+      "brand": "小米",
+      "model": "qmdq88.dishwasher.s1",
+      "room": "厨房",
+      "category": "洗碗机",
+      "protocol": "xiaomi-cloud",
+      "online": false,
+      "power": false,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:2:4",
+          "kind": "property",
+          "name": "Mode",
+          "description": "Mode",
+          "siid": 2,
+          "piid": 4,
+          "format": "uint8",
+          "value": 1,
+          "options": [
+            {
+              "value": 0,
+              "label": "Smart"
+            },
+            {
+              "value": 1,
+              "label": "Basic"
+            },
+            {
+              "value": 2,
+              "label": "Intensive"
+            },
+            {
+              "value": 3,
+              "label": "Disinfecting"
+            },
+            {
+              "value": 4,
+              "label": "Quick Wash"
+            },
+            {
+              "value": 5,
+              "label": "Energy Saving"
+            },
+            {
+              "value": 6,
+              "label": "Self Clean"
+            },
+            {
+              "value": 7,
+              "label": "Drying"
+            }
+          ]
+        },
+        {
+          "id": "action:2:1",
+          "kind": "action",
+          "name": "Start Wash",
+          "description": "Start Wash",
+          "siid": 2,
+          "aiid": 1
+        },
+        {
+          "id": "action:2:2",
+          "kind": "action",
+          "name": "Pause",
+          "description": "Pause",
+          "siid": 2,
+          "aiid": 2
+        },
+        {
+          "id": "action:2:3",
+          "kind": "action",
+          "name": "Stop Washing",
+          "description": "Stop Washing",
+          "siid": 2,
+          "aiid": 3
+        },
+        {
+          "id": "prop:3:1",
+          "kind": "property",
+          "name": "Physical Control Locked",
+          "description": "Physical Control Locked",
+          "siid": 3,
+          "piid": 1,
+          "format": "bool",
+          "value": false
+        },
+        {
+          "id": "prop:7:4",
+          "kind": "property",
+          "name": "set-preservation",
+          "description": "set-preservation",
+          "siid": 7,
+          "piid": 4,
+          "format": "uint8",
+          "value": 24
+        },
+        {
+          "id": "prop:7:6",
+          "kind": "property",
+          "name": "preservation-switch",
+          "description": "preservation-switch",
+          "siid": 7,
+          "piid": 6,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:7:7",
+          "kind": "property",
+          "name": "water-softener-level",
+          "description": "water-softener-level",
+          "siid": 7,
+          "piid": 7,
+          "format": "uint8",
+          "value": 3
+        },
+        {
+          "id": "prop:7:8",
+          "kind": "property",
+          "name": "wash-finished-remind",
+          "description": "wash-finished-remind",
+          "siid": 7,
+          "piid": 8,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:7:9",
+          "kind": "property",
+          "name": "open-door-remind",
+          "description": "open-door-remind",
+          "siid": 7,
+          "piid": 9,
+          "format": "bool",
+          "value": true
+        },
+        {
+          "id": "prop:7:11",
+          "kind": "property",
+          "name": "open-door-time",
+          "description": "open-door-time",
+          "siid": 7,
+          "piid": 11,
+          "format": "uint8",
+          "value": 10
+        },
+        {
+          "id": "prop:7:13",
+          "kind": "property",
+          "name": "book-time",
+          "description": "book-time",
+          "siid": 7,
+          "piid": 13,
+          "format": "string",
+          "value": "123"
+        },
+        {
+          "id": "prop:7:14",
+          "kind": "property",
+          "name": "book-mode",
+          "description": "book-mode",
+          "siid": 7,
+          "piid": 14,
+          "format": "uint8",
+          "value": 0,
+          "options": [
+            {
+              "value": 0,
+              "label": "Smart"
+            },
+            {
+              "value": 1,
+              "label": "Basic"
+            },
+            {
+              "value": 2,
+              "label": "Intensive"
+            },
+            {
+              "value": 3,
+              "label": "Disifecting"
+            },
+            {
+              "value": 4,
+              "label": "Quick Wash"
+            },
+            {
+              "value": 5,
+              "label": "Energy Saving"
+            },
+            {
+              "value": 6,
+              "label": "Self Clean"
+            },
+            {
+              "value": 7,
+              "label": "Dry"
+            }
+          ]
+        }
+      ],
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-25T14:28:27.799996595Z"
+      },
+      "attributes": [
+        {
+          "key": "on",
+          "label": "开关状态",
+          "value": "关闭"
+        }
+      ],
+      "value": "开关状态 关闭",
+      "lastSeen": "2026-11-25T14:28:28.453766644Z",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083592597Z"
+    },
+    {
+      "id": "xiaomi-90129810",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "90129810",
+      "name": "米家风扇",
+      "brand": "小米",
+      "model": "zhimi.fan.sa1",
+      "room": "卧室",
+      "category": "风扇",
+      "protocol": "xiaomi-cloud",
+      "online": false,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:2:2",
+          "kind": "property",
+          "name": "Gear Fan Level",
+          "description": "Gear Fan Level",
+          "siid": 2,
+          "piid": 2,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 1,
+              "label": "Level1"
+            },
+            {
+              "value": 2,
+              "label": "Level2"
+            },
+            {
+              "value": 3,
+              "label": "Level3"
+            },
+            {
+              "value": 4,
+              "label": "Level4"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:3",
+          "kind": "property",
+          "name": "Horizontal Swing",
+          "description": "Horizontal Swing",
+          "siid": 2,
+          "piid": 3,
+          "format": "bool"
+        },
+        {
+          "id": "prop:2:4",
+          "kind": "property",
+          "name": "Horizontal Swing Included Angle",
+          "description": "Horizontal Swing Included Angle",
+          "siid": 2,
+          "piid": 4,
+          "format": "uint16"
+        },
+        {
+          "id": "prop:2:5",
+          "kind": "property",
+          "name": "Mode",
+          "description": "Mode",
+          "siid": 2,
+          "piid": 5,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 1,
+              "label": "Natural Wind"
+            },
+            {
+              "value": 2,
+              "label": "Straight Wind"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:6",
+          "kind": "property",
+          "name": "Stepless Fan Level",
+          "description": "Stepless Fan Level",
+          "siid": 2,
+          "piid": 6,
+          "format": "uint8"
+        },
+        {
+          "id": "action:2:1",
+          "kind": "action",
+          "name": "Turn Left",
+          "description": "Turn Left",
+          "siid": 2,
+          "aiid": 1
+        },
+        {
+          "id": "action:2:2",
+          "kind": "action",
+          "name": "Turn Right",
+          "description": "Turn Right",
+          "siid": 2,
+          "aiid": 2
+        },
+        {
+          "id": "prop:3:1",
+          "kind": "property",
+          "name": "Physical Control Locked",
+          "description": "Physical Control Locked",
+          "siid": 3,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:4:1",
+          "kind": "property",
+          "name": "Alarm",
+          "description": "Alarm",
+          "siid": 4,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:5:1",
+          "kind": "property",
+          "name": "Brightness",
+          "description": "Brightness",
+          "siid": 5,
+          "piid": 1,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Normal"
+            },
+            {
+              "value": 1,
+              "label": "Dim"
+            },
+            {
+              "value": 2,
+              "label": "Off"
+            }
+          ]
+        },
+        {
+          "id": "prop:6:1",
+          "kind": "property",
+          "name": "Countdown Time",
+          "description": "Countdown Time",
+          "siid": 6,
+          "piid": 1,
+          "format": "uint32"
+        }
+      ],
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-25T14:28:27.887141015Z"
+      },
+      "lastSeen": "2026-11-25T14:28:28.453850561Z",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083600222Z"
+    },
+    {
+      "id": "xiaomi-918340022",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "918340022",
+      "name": "空调伴侣插座",
+      "brand": "小米",
+      "model": "lumi.acpartner.mcn02",
+      "room": "浴室",
+      "category": "插座",
+      "protocol": "xiaomi-cloud",
+      "online": false,
+      "canControl": true,
+      "controls": [
+        {
+          "id": "prop:2:1",
+          "kind": "property",
+          "name": "电源开关",
+          "description": "Switch Status",
+          "siid": 2,
+          "piid": 1,
+          "format": "bool"
+        },
+        {
+          "id": "prop:2:2",
+          "kind": "property",
+          "name": "Mode",
+          "description": "Mode",
+          "siid": 2,
+          "piid": 2,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Auto"
+            },
+            {
+              "value": 1,
+              "label": "Cool"
+            },
+            {
+              "value": 2,
+              "label": "Dry"
+            },
+            {
+              "value": 3,
+              "label": "Heat"
+            },
+            {
+              "value": 4,
+              "label": "Fan"
+            }
+          ]
+        },
+        {
+          "id": "prop:2:3",
+          "kind": "property",
+          "name": "Target Temperature",
+          "description": "Target Temperature",
+          "siid": 2,
+          "piid": 3,
+          "format": "float"
+        },
+        {
+          "id": "prop:3:1",
+          "kind": "property",
+          "name": "Fan Level",
+          "description": "Fan Level",
+          "siid": 3,
+          "piid": 1,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Auto"
+            },
+            {
+              "value": 1,
+              "label": "Low"
+            },
+            {
+              "value": 2,
+              "label": "Medium"
+            },
+            {
+              "value": 3,
+              "label": "High"
+            }
+          ]
+        },
+        {
+          "id": "prop:3:2",
+          "kind": "property",
+          "name": "Vertical Swing",
+          "description": "Vertical Swing",
+          "siid": 3,
+          "piid": 2,
+          "format": "bool"
+        },
+        {
+          "id": "prop:4:1",
+          "kind": "property",
+          "name": "Match State",
+          "description": "Match State",
+          "siid": 4,
+          "piid": 1,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Out Of Matching"
+            },
+            {
+              "value": 1,
+              "label": "Matching"
+            }
+          ]
+        },
+        {
+          "id": "prop:4:2",
+          "kind": "property",
+          "name": "Ac Work Mode",
+          "description": "Ac Work Mode",
+          "siid": 4,
+          "piid": 2,
+          "format": "uint8",
+          "options": [
+            {
+              "value": 0,
+              "label": "Ac Mode With Outlet"
+            },
+            {
+              "value": 1,
+              "label": "Ac Mode Without Outlet"
+            }
+          ]
+        },
+        {
+          "id": "prop:4:3",
+          "kind": "property",
+          "name": "Ac State",
+          "description": "Ac State",
+          "siid": 4,
+          "piid": 3,
+          "format": "string"
+        },
+        {
+          "id": "action:4:1",
+          "kind": "action",
+          "name": "Set Ac Model",
+          "description": "Set Ac Model",
+          "siid": 4,
+          "aiid": 1,
+          "inputs": [
+            {
+              "name": "Brand Id",
+              "format": "uint32"
+            },
+            {
+              "name": "Remote Id",
+              "format": "uint32"
+            },
+            {
+              "name": "Ac Type",
+              "format": "uint32",
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Stateless"
+                },
+                {
+                  "value": 1,
+                  "label": "Stateful"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "action:4:2",
+          "kind": "action",
+          "name": "Set Ac Ctrl Info",
+          "description": "Set Ac Ctrl Info",
+          "siid": 4,
+          "aiid": 2,
+          "inputs": [
+            {
+              "name": "Remote Id",
+              "format": "uint32"
+            },
+            {
+              "name": "Ac Ctrl Library Crc32",
+              "format": "uint32"
+            },
+            {
+              "name": "Ac Ctrl Library",
+              "format": "string"
+            }
+          ]
+        }
+      ],
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-25T14:28:28.040753891Z"
+      },
+      "lastSeen": "2026-11-25T14:28:28.453864853Z",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083608014Z"
+    },
+    {
+      "id": "xiaomi-blt-3-1032k7p6g5800",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "blt.3.1032k7p6g5800",
+      "name": "温湿度传感器",
+      "brand": "小米",
+      "model": "miaomiaoce.sensor_ht.t1",
       "room": "卧室",
       "category": "温湿度计",
       "protocol": "xiaomi-cloud",
       "online": false,
       "canControl": false,
-      "lastSeen": "2026-11-25T09:58:55.1579718+08:00",
+      "attributes": [
+        {
+          "key": "temperature",
+          "label": "温度",
+          "value": "14.9",
+          "unit": "°C"
+        }
+      ],
+      "value": "温度 14.9°C",
+      "lastSeen": "2026-11-25T14:28:28.453880228Z",
       "demo": false,
-      "createdAt": "2026-11-25T09:58:26.127248082+08:00"
+      "createdAt": "2026-11-25T14:26:34.083615056Z"
+    },
+    {
+      "id": "xiaomi-blt-3-1bogt545oeg00",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "blt.3.1bogt545oeg00",
+      "name": "8H智能助眠天然乳胶枕X",
+      "brand": "小米",
+      "model": "qushui.pillow.p2",
+      "room": "卧室",
+      "category": "其他",
+      "protocol": "xiaomi-cloud",
+      "online": false,
+      "canControl": false,
+      "lastSeen": "2026-11-25T14:28:28.453887895Z",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083631264Z"
+    },
+    {
+      "id": "xiaomi-blt-3-1o9r8asq0c000",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "blt.3.1o9r8asq0c000",
+      "name": "3d打印机温度计",
+      "brand": "小米",
+      "model": "miaomiaoce.sensor_ht.t2",
+      "room": "楼上",
+      "category": "温湿度计",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "canControl": false,
+      "attributes": [
+        {
+          "key": "temperature",
+          "label": "温度",
+          "value": "12.3",
+          "unit": "°C"
+        },
+        {
+          "key": "humidity",
+          "label": "湿度",
+          "value": "59.3",
+          "unit": "%"
+        }
+      ],
+      "value": "温度 12.3°C · 湿度 59.3%",
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083639139Z"
+    },
+    {
+      "id": "xiaomi-D03E7DFFFEBDFEFA",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "D03E7DFFFEBDFEFA",
+      "name": "小米体脂秤2",
+      "brand": "小米",
+      "model": "hmpace.scales.mibfs",
+      "room": "未分区",
+      "category": "其他",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "canControl": false,
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083651514Z"
+    },
+    {
+      "id": "xiaomi-ED0F26FFFE3383E8",
+      "accountId": "c9b9bc8f8ce42706",
+      "remoteId": "ED0F26FFFE3383E8",
+      "name": "小米手环3 NFC版",
+      "brand": "小米",
+      "model": "hmpace.bracelet.v3nfc",
+      "room": "未分区",
+      "category": "穿戴设备",
+      "protocol": "xiaomi-cloud",
+      "online": true,
+      "canControl": false,
+      "lastSeen": "2026-11-26T08:31:34.774478585+08:00",
+      "demo": false,
+      "createdAt": "2026-11-25T14:26:34.083664848Z"
     }
   ],
   "accounts": [
@@ -240,18 +4583,216 @@
       "createdAt": "2026-11-24T22:24:40.199105979+08:00"
     },
     {
-      "id": "a04e929e7567fb21",
+      "id": "c9b9bc8f8ce42706",
       "provider": "xiaomi",
-      "label": "17703965346",
-      "displayName": "177小米",
+      "label": "18937028075",
+      "displayName": "小米189",
       "region": "cn",
       "status": "connected",
-      "note": "已授权 · 已同步 2 台设备",
-      "createdAt": "2026-11-24T22:27:08.11871396+08:00"
+      "note": "已授权 · 已同步 22 台设备",
+      "createdAt": "2026-11-25T14:26:33.76619901Z"
     }
   ],
   "discovery": [],
   "logs": [
+    {
+      "id": "684b8312c737e23f",
+      "level": "success",
+      "message": "[小米] 小冰箱 开关已开启",
+      "at": "2026-11-26T08:33:29.436654802+08:00"
+    },
+    {
+      "id": "0dd9e0bf05738248",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：MIoT 实时属性未全部读取：yang1234(xiaomi.router.r3g): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.lv1): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.rb03): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；yang1234(xiaomi.router.ra67): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；Redmi小爱触屏音箱 8(xiaomi.wifispeaker.x08c): MIoT 规格中没有可读取的实时属性（access 不包含 read）",
+      "at": "2026-11-26T08:31:34.77253969+08:00"
+    },
+    {
+      "id": "75f28418ef55b6d8",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：MIoT 实时属性未全部读取：yang1234(xiaomi.router.r3g): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.lv1): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.rb03): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；yang1234(xiaomi.router.ra67): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；米家扫拖机器人3C 增强版(xiaomi.vacuum.c103): MIoT 属性读取有响应，但未返回有效的开关属性值（switch.on）；其他属性不能代替电源状态",
+      "at": "2026-11-25T23:48:18.434648227Z"
+    },
+    {
+      "id": "105434bac4b5b1e6",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：MIoT 实时属性未全部读取：yang1234(xiaomi.router.r3g): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.lv1): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.rb03): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；yang1234(xiaomi.router.ra67): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；米家扫拖机器人3C 增强版(xiaomi.vacuum.c103): MIoT 属性读取有响应，但未返回有效的开关属性值（switch.on）；其他属性不能代替电源状态",
+      "at": "2026-11-25T23:43:06.749661786Z"
+    },
+    {
+      "id": "4c0afeda95a29b9d",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：MIoT 实时属性未全部读取：yang1234(xiaomi.router.r3g): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.lv1): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.rb03): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；yang1234(xiaomi.router.ra67): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；米家扫拖机器人3C 增强版(xiaomi.vacuum.c103): MIoT 属性读取有响应，但未返回有效的开关属性值（switch.on）；其他属性不能代替电源状态",
+      "at": "2026-11-25T23:30:09.18329019Z"
+    },
+    {
+      "id": "bc9d272f7e83d33c",
+      "level": "success",
+      "message": "[小米] 总插座 开关已开启",
+      "at": "2026-11-25T23:15:06.131758575Z"
+    },
+    {
+      "id": "51d66a50b6bf578d",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：MIoT 实时属性未全部读取：yang1234(xiaomi.router.r3g): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.lv1): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.rb03): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；yang1234(xiaomi.router.ra67): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；米家扫拖机器人3C 增强版(xiaomi.vacuum.c103): MIoT 属性读取有响应，但未返回有效的开关属性值（switch.on）；其他属性不能代替电源状态",
+      "at": "2026-11-25T23:14:51.573668807Z"
+    },
+    {
+      "id": "50f5fae7cff81150",
+      "level": "info",
+      "message": "品牌账号显示名称已更新：小米189",
+      "at": "2026-11-25T14:28:35.981986111Z"
+    },
+    {
+      "id": "851e13e6558b9756",
+      "level": "success",
+      "message": "品牌账号同步完成：22 台设备",
+      "at": "2026-11-25T14:28:28.454059812Z"
+    },
+    {
+      "id": "8d99075a086d451a",
+      "level": "warn",
+      "message": "[小米] 房间名称未匹配：2/22 台设备仍显示未分区（小米体脂秤2、小米手环3 NFC版）。gethome_merged/gethome 返回成功但未建立这些 DID 的房间关联；请确认米家 App 中已给设备分配房间。",
+      "at": "2026-11-25T14:28:28.443627933Z"
+    },
+    {
+      "id": "82cbda2ca311c836",
+      "level": "info",
+      "message": "已删除接入记录：17703965346",
+      "at": "2026-11-25T14:28:21.18080962Z"
+    },
+    {
+      "id": "42ccc3029db088a5",
+      "level": "success",
+      "message": "[小米] 米家智能显示器挂灯1S 开关已关闭",
+      "at": "2026-11-25T14:27:59.397409117Z"
+    },
+    {
+      "id": "96f32456b491bacd",
+      "level": "success",
+      "message": "[小米] 米家智能显示器挂灯1S 开关已开启",
+      "at": "2026-11-25T14:27:57.968132072Z"
+    },
+    {
+      "id": "ebdd073453ef2fb7",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：MIoT 实时属性未全部读取：yang1234(xiaomi.router.r3g): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.lv1): MIoT 规格中没有可读取的实时属性（access 不包含 read）；yang1234(xiaomi.router.rb03): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；yang1234(xiaomi.router.ra67): MIoT prop/get 返回 3 条记录，但没有匹配到请求的 SIID/PIID；米家扫拖机器人3C 增强版(xiaomi.vacuum.c103): MIoT 属性读取有响应，但未返回有效的开关属性值（switch.on）；其他属性不能代替电源状态",
+      "at": "2026-11-25T14:26:50.957817974Z"
+    },
+    {
+      "id": "95c8d2ace7cb67a3",
+      "level": "success",
+      "message": "品牌账号同步完成：22 台设备",
+      "at": "2026-11-25T14:26:35.368522265Z"
+    },
+    {
+      "id": "1d6cabf63dd08cbe",
+      "level": "warn",
+      "message": "[小米] 房间名称未匹配：2/22 台设备仍显示未分区（小米体脂秤2、小米手环3 NFC版）。gethome_merged/gethome 返回成功但未建立这些 DID 的房间关联；请确认米家 App 中已给设备分配房间。",
+      "at": "2026-11-25T14:26:35.366239088Z"
+    },
+    {
+      "id": "6079420e8a33a707",
+      "level": "success",
+      "message": "品牌账号已添加：18937028075",
+      "at": "2026-11-25T14:26:33.767200264Z"
+    },
+    {
+      "id": "8beeeafe4845c6e0",
+      "level": "info",
+      "message": "局域网 mDNS 扫描完成：暂未发现服务",
+      "at": "2026-11-25T03:37:09.777397923Z"
+    },
+    {
+      "id": "a57882005657bed9",
+      "level": "success",
+      "message": "[小米] 小冰箱 开关已开启",
+      "at": "2026-11-25T03:36:31.749073696Z"
+    },
+    {
+      "id": "56a353b2ffec0cce",
+      "level": "success",
+      "message": "[小米] 小冰箱 开关已关闭",
+      "at": "2026-11-25T03:36:30.139052782Z"
+    },
+    {
+      "id": "aa251542d7116d94",
+      "level": "success",
+      "message": "[小米] 小冰箱 开关已关闭",
+      "at": "2026-11-25T03:36:28.560170795Z"
+    },
+    {
+      "id": "b66700956d0c0592",
+      "level": "success",
+      "message": "[易微联] 河南吸顶灯 已关闭",
+      "at": "2026-11-25T03:36:25.627621384Z"
+    },
+    {
+      "id": "6be55d778700537c",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T03:36:25.625749626Z"
+    },
+    {
+      "id": "dc0733a1c6636934",
+      "level": "success",
+      "message": "[易微联] 河南吸顶灯 已开启",
+      "at": "2026-11-25T03:36:24.250698525Z"
+    },
+    {
+      "id": "eb2e2be9d46456a4",
+      "level": "info",
+      "message": "设备已更新：河南吸顶灯",
+      "at": "2026-11-25T03:36:24.248637308Z"
+    },
+    {
+      "id": "1122363b63740093",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：小米云端状态读取失败：请求小米设备列表失败: Post \"https://api.io.mi.com/app/home/device_list\": dial tcp 111.13.213.29:443: connect: no route to host",
+      "at": "2026-11-25T03:35:49.564980824Z"
+    },
+    {
+      "id": "6fe0186974c5015a",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：小米云端状态读取失败：请求小米设备列表失败: Post \"https://api.io.mi.com/app/home/device_list\": dial tcp 111.13.213.29:443: connect: no route to host",
+      "at": "2026-11-25T03:29:02.812255432Z"
+    },
+    {
+      "id": "72798d547425b1e1",
+      "level": "warn",
+      "message": "[易微联 / eWeLink] 后台状态同步失败：eWeLink 云端状态读取失败：请求 eWeLink 设备清单失败: Get \"https://cn-apia.coolkit.cn/v2/device/thing?lang=cn\u0026num=0\": dial tcp 54.223.247.59:443: connect: no route to host",
+      "at": "2026-11-25T03:29:02.782411219Z"
+    },
+    {
+      "id": "02d15da3ab6305f8",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：小米云端状态读取失败：请求小米设备列表失败: Post \"https://api.io.mi.com/app/home/device_list\": dial tcp 111.13.40.16:443: connect: no route to host",
+      "at": "2026-11-25T03:17:16.719551748Z"
+    },
+    {
+      "id": "70869854b0ad93e8",
+      "level": "warn",
+      "message": "[易微联 / eWeLink] 后台状态同步失败：eWeLink 云端状态读取失败：请求 eWeLink 设备清单失败: Get \"https://cn-apia.coolkit.cn/v2/device/thing?lang=cn\u0026num=0\": dial tcp 54.223.247.59:443: connect: no route to host",
+      "at": "2026-11-25T03:17:16.670816203Z"
+    },
+    {
+      "id": "071c40dfc8dd1ad7",
+      "level": "success",
+      "message": "[小米] 小冰箱 开关已开启",
+      "at": "2026-11-25T03:06:00.654307021Z"
+    },
+    {
+      "id": "7164dbcf3cf1bfbe",
+      "level": "success",
+      "message": "[小米] 小冰箱 开关已关闭",
+      "at": "2026-11-25T03:05:58.534929144Z"
+    },
+    {
+      "id": "26412b3e1b942ad5",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：MIoT 实时属性未全部读取：小冰箱(chuangmi.plug.m3): Get \"https://miot-spec.org/miot-spec-v2/instances?status=all\": dial tcp 120.92.65.105:443: connect: no route to host",
+      "at": "2026-11-25T03:05:45.38437395Z"
+    },
     {
       "id": "a4389c11f81efb89",
       "level": "success",
@@ -653,52 +5194,16 @@
       "level": "success",
       "message": "品牌账号已添加：17703965346",
       "at": "2026-11-24T22:27:08.118935117+08:00"
-    },
-    {
-      "id": "7309cc21ec6dde5f",
-      "level": "info",
-      "message": "设备已更新：河南吸顶灯",
-      "at": "2026-11-24T22:26:34.581982322+08:00"
-    },
-    {
-      "id": "dab9cae989918c1b",
-      "level": "info",
-      "message": "设备已更新：河南吸顶灯",
-      "at": "2026-11-24T22:26:32.851836021+08:00"
-    },
-    {
-      "id": "363a6330b4eec318",
-      "level": "info",
-      "message": "设备已更新：河南吸顶灯",
-      "at": "2026-11-24T22:26:25.944422098+08:00"
-    },
-    {
-      "id": "c41c26b9c9913d44",
-      "level": "success",
-      "message": "品牌账号同步完成：7 台设备",
-      "at": "2026-11-24T22:24:40.280621085+08:00"
-    },
-    {
-      "id": "c0146b85a715ff49",
-      "level": "success",
-      "message": "品牌账号已添加：易微联",
-      "at": "2026-11-24T22:24:40.199115331+08:00"
-    },
-    {
-      "id": "737f2fe5443a4b99",
-      "level": "info",
-      "message": "GoHome 初始化完成，等待真实品牌设备接入",
-      "at": "2026-11-24T22:24:02.298768228+08:00"
     }
   ],
   "energyHistory": {
     "ewelink-10022d8ca6": {
       "days": {
-        "2026-11-25": 0.02145823701861483
+        "2026-11-25": 0.11279833338791662
       },
-      "lastPowerW": 96.64,
-      "lastSample": "2026-11-25T11:04:04.17259063+08:00",
-      "lastIntegratedAt": "2026-11-25T11:04:04.17259063+08:00",
+      "lastPowerW": 79.02,
+      "lastSample": "2026-11-25T05:08:06.294956787Z",
+      "lastIntegratedAt": "2026-11-25T05:08:06.294956787Z",
       "lastMonthAt": "0001-01-01T00:00:00Z"
     }
   },
