@@ -24,8 +24,8 @@ func loadOrCreateAdminPassword(dataDir string) (password string, created bool, e
 	path := filepath.Join(dataDir, adminPasswordFileName)
 	if raw, readErr := os.ReadFile(path); readErr == nil {
 		password = strings.TrimSpace(string(raw))
-		if len(password) < 12 || len(password) > 128 {
-			return "", false, fmt.Errorf("管理员密码文件内容无效：%s（长度需为 12–128 个字符）", path)
+		if len([]rune(password)) < 6 || len([]rune(password)) > 128 {
+			return "", false, fmt.Errorf("管理员密码文件内容无效：%s（长度需为 6–128 个字符）", path)
 		}
 		_ = os.Chmod(path, 0600)
 		return password, false, nil
@@ -44,7 +44,7 @@ func loadOrCreateAdminPassword(dataDir string) (password string, created bool, e
 			raw, readErr := os.ReadFile(path)
 			if readErr == nil {
 				password = strings.TrimSpace(string(raw))
-				if len(password) >= 12 && len(password) <= 128 {
+				if len([]rune(password)) >= 6 && len([]rune(password)) <= 128 {
 					return password, false, nil
 				}
 			}
@@ -78,8 +78,8 @@ func (a *App) changeAdminPassword(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "请求格式错误")
 		return
 	}
-	if len(in.NewPassword) < 12 || len(in.NewPassword) > 128 {
-		fail(w, http.StatusBadRequest, "新密码长度必须为 12–128 个字符")
+	if len([]rune(in.NewPassword)) < 6 || len([]rune(in.NewPassword)) > 128 {
+		fail(w, http.StatusBadRequest, "新密码长度必须为 6–128 个字符")
 		return
 	}
 	if in.NewPassword != in.ConfirmPassword {

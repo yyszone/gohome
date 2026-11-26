@@ -2815,7 +2815,7 @@ func TestGoHomeBrandAssetsAreServed(t *testing.T) {
 		}
 		if item.path == "/" {
 			body := resp.Body.String()
-			for _, marker := range []string{"/favicon.svg", "/site.webmanifest", "/theme.css?v=0.2.28", "/gohome-logo.png"} {
+			for _, marker := range []string{"/favicon.svg", "/site.webmanifest", "/theme.css?v=0.2.29", "/gohome-logo.png"} {
 				if !strings.Contains(body, marker) {
 					t.Errorf("index is missing asset reference %q", marker)
 				}

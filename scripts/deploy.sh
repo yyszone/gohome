@@ -1,6 +1,8 @@
 #!/bin/sh
 # Safe remote deployment for GoHome. Replaces only the architecture-specific
 # executable selected by scripts/service-start.sh; leaves data/ and config intact.
+# A short-lived SSH ControlMaster is shared by every remote command and scp,
+# so password authentication is performed only once per deployment.
 set -eu
 
 : "${DEPLOY_HOST:?用法：make deploy DEPLOY_HOST=root@主机地址 DEPLOY_ARCH=arm64}"
@@ -35,26 +37,52 @@ command -v scp >/dev/null 2>&1 || { echo "找不到 scp 命令" >&2; exit 1; }
 printf '部署目标：%s:%s\n架构：%s\n服务：%s\n二进制：%s\n' \
   "$DEPLOY_HOST" "$DEPLOY_PATH" "$DEPLOY_ARCH" "$DEPLOY_SERVICE" "$DEPLOY_BINARY"
 
-# Check the real remote user-space architecture before transferring anything.
-ssh "$DEPLOY_HOST" sh -s -- "$DEPLOY_ARCH" <<'REMOTE_CHECK'
+# Use a private temporary directory for the multiplexed control socket.
+# The master connection authenticates interactively once, then ssh/scp reuse it.
+CONTROL_DIR=$(mktemp -d "${TMPDIR:-/tmp}/gohome-ssh.XXXXXX")
+chmod 0700 "$CONTROL_DIR"
+CONTROL_SOCKET="$CONTROL_DIR/control"
+cleanup() {
+  ssh -S "$CONTROL_SOCKET" -O exit "$DEPLOY_HOST" >/dev/null 2>&1 || true
+  rm -rf "$CONTROL_DIR"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+printf '\n正在建立 SSH 连接（本次部署只需输入一次 SSH 密码）...\n'
+ssh -M -S "$CONTROL_SOCKET" -o ControlPersist=300 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -Nf "$DEPLOY_HOST"
+
+ssh_shared() {
+  ssh -S "$CONTROL_SOCKET" -o ControlMaster=no "$DEPLOY_HOST" "$@"
+}
+scp_shared() {
+  scp -o ControlPath="$CONTROL_SOCKET" -o ControlMaster=no "$@"
+}
+
+# Check the real remote user-space architecture before transferring anything,
+# and create the chosen project directory if it does not exist yet.
+ssh_shared sh -s -- "$DEPLOY_ARCH" "$DEPLOY_PATH" <<'REMOTE_CHECK'
 set -eu
 want=$1
+app_dir=$2
 machine=$(uname -m)
 bits=$(getconf LONG_BIT 2>/dev/null || echo unknown)
 case "$want:$machine:$bits" in
   arm64:aarch64:64|arm64:arm64:64|armv7:armv7l:32|armv7:armv8l:32|armv7:aarch64:32|armv7:armhf:32|amd64:x86_64:64|amd64:amd64:64) ;;
   *) echo "远程架构不匹配：uname -m=$machine LONG_BIT=$bits，要求 $want" >&2; exit 1 ;;
 esac
+mkdir -p "$app_dir"
 REMOTE_CHECK
 
 REMOTE_TEMP="$DEPLOY_PATH/.$DEPLOY_BINARY.uploading"
 echo "正在上传 $LOCAL_BINARY ..."
-ssh "$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
-scp "$LOCAL_BINARY" "$DEPLOY_HOST:$REMOTE_TEMP"
+scp_shared "$LOCAL_BINARY" "$DEPLOY_HOST:$REMOTE_TEMP"
 
 # The replacement is atomic on the same filesystem. Keep one rollback copy
 # until systemd reports the new process as active.
-ssh "$DEPLOY_HOST" sh -s -- \
+ssh_shared sh -s -- \
   "$DEPLOY_PATH" "$DEPLOY_ARCH" "$DEPLOY_SERVICE" "$DEPLOY_BINARY" <<'REMOTE_DEPLOY'
 set -eu
 app_dir=$1

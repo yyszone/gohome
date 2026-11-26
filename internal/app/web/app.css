@@ -448,6 +448,7 @@
 
 
 /* v0.2.28: camera preview, password management and resilient small screens. */
+/* v0.2.29: six-character admin password validation. */
 .btn-password{white-space:nowrap}
 .login-security code{display:inline-block;padding:1px 4px;border-radius:4px;background:#f0efff;color:#675fc7;font-size:9px}
 .camera-preview{display:grid;gap:5px;margin:10px 0;max-width:560px;min-width:0}

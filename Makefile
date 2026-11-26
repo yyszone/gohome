@@ -9,7 +9,7 @@ MAIN_PKG := ./cmd/gohome
 # 注意：git rev-list --count 是提交次数，不是每执行一次 make 就 +1。
 VERSION_PREFIX ?= 0.2
 # 源码 ZIP 不包含 .git：使用源码声明的版本，避免退化成 0.2.0。
-SOURCE_VERSION ?= 0.2.28
+SOURCE_VERSION ?= 0.2.29
 BUILD_DATE := $(shell date +%Y%m%d)
 GIT_ROOT := $(shell git rev-parse --show-toplevel 2>/dev/null)
 ifneq ($(strip $(GIT_ROOT)),)
@@ -76,6 +76,7 @@ armbian: check linux-arm32 linux-arm64
 # 一条命令安全部署：make deploy DEPLOY_HOST=root@192.168.31.63 DEPLOY_ARCH=arm64
 DEPLOY_HOST ?=
 DEPLOY_ARCH ?= arm64
+# 远端 GoHome 项目根目录；必须与 gohome.service 的 WorkingDirectory 一致。
 DEPLOY_PATH ?= /root/gohome
 DEPLOY_SERVICE ?= gohome
 ifeq ($(DEPLOY_ARCH),arm64)
@@ -107,4 +108,4 @@ clean:
 	rm -rf $(BUILD_DIR) $(DIST_DIR)
 
 help:
-	@printf '%s\n' 'make                 测试并编译 Linux x64/ARMv7/ARM64 + Windows x64（无 .git 时使用 SOURCE_VERSION）' 'make build           编译当前平台到 build/' 'make run             编译并运行当前平台' 'make dev             go run 开发模式' 'make test            运行单元测试' 'make vet             Go 静态检查' 'make release         测试并交叉编译全部发布目标' 'make linux           只编译 Linux x64' 'make linux-arm32     编译 Linux ARMv7 32 位' 'make linux-arm64     编译 Linux ARM64 64 位' 'make armbian         测试并编译 Armbian ARM32 + ARM64' 'make deploy DEPLOY_HOST=root@IP DEPLOY_ARCH=arm64 远程部署并自动回滚' 'make windows         只编译 Windows x64' 'make clean           删除构建产物' 'make help            显示帮助'
+	@printf '%s\n' 'make                 测试并编译 Linux x64/ARMv7/ARM64 + Windows x64（无 .git 时使用 SOURCE_VERSION）' 'make build           编译当前平台到 build/' 'make run             编译并运行当前平台' 'make dev             go run 开发模式' 'make test            运行单元测试' 'make vet             Go 静态检查' 'make release         测试并交叉编译全部发布目标' 'make linux           只编译 Linux x64' 'make linux-arm32     编译 Linux ARMv7 32 位' 'make linux-arm64     编译 Linux ARM64 64 位' 'make armbian         测试并编译 Armbian ARM32 + ARM64' 'make deploy DEPLOY_HOST=root@IP DEPLOY_ARCH=arm64 [DEPLOY_PATH=/root/gohome] 远程部署并自动回滚（SSH 密码只输入一次）' 'make windows         只编译 Windows x64' 'DEPLOY_PATH          远程项目目录，默认 /root/gohome' 'make clean           删除构建产物' 'make help            显示帮助'

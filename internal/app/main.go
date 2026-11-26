@@ -37,7 +37,7 @@ var webFiles embed.FS
 // Build metadata is injected by Makefile from the current Git repository.
 // A source ZIP without .git metadata intentionally reports commit count 0.
 var (
-	version     = "0.2.28-source"
+	version     = "0.2.29-source"
 	buildDate   = "source"
 	commitCount = "0"
 	gitHash     = ""
@@ -1034,7 +1034,7 @@ func (a *App) apiDocs(w http.ResponseWriter, r *http.Request) {
 		"authentication": "Persistent HttpOnly signed Cookie. First-run administrator password is generated into data/gohome.admin.password (file mode 0600).",
 		"endpoints": []map[string]any{
 			{"method": "POST", "path": "/api/auth/login", "body": map[string]any{"username": "admin", "password": "读取 data/gohome.admin.password"}, "description": "Create a persistent HttpOnly session cookie"},
-			{"method": "POST", "path": "/api/auth/password", "body": map[string]any{"currentPassword": "当前密码", "newPassword": "新密码（12–128 位）", "confirmPassword": "确认新密码"}, "description": "Change administrator password and invalidate other sessions"},
+			{"method": "POST", "path": "/api/auth/password", "body": map[string]any{"currentPassword": "当前密码", "newPassword": "新密码（6–128 个字符）", "confirmPassword": "确认新密码"}, "description": "Change administrator password and invalidate other sessions"},
 			{"method": "GET", "path": "/api/auth/session", "description": "Check whether the browser has a valid session cookie"},
 			{"method": "POST", "path": "/api/auth/logout", "description": "Clear the session cookie"},
 			{"method": "POST", "path": "/api/state-sync/activity", "body": map[string]any{"clientId": "per-tab-id", "active": true}, "description": "Lease visible overview/device page activity to enable provider polling; release when hidden"},

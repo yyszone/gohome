@@ -54,7 +54,7 @@ func TestChangePasswordRotatesSessionAndSurvivesRestart(t *testing.T) {
 		t.Fatalf("expected login cookie, got %d", len(cookies))
 	}
 
-	newPassword := "A-new-password-with-32-chars-2026!"
+	newPassword := "123456"
 	changeBody := fmt.Sprintf(`{"currentPassword":%q,"newPassword":%q,"confirmPassword":%q}`, oldPassword, newPassword, newPassword)
 	changeReq := httptest.NewRequest(http.MethodPost, "/api/auth/password", strings.NewReader(changeBody))
 	changeReq.AddCookie(cookies[0])
@@ -92,5 +92,15 @@ func TestChangePasswordRotatesSessionAndSurvivesRestart(t *testing.T) {
 	restarted.ServeHTTP(loginAgain, loginAgainReq)
 	if loginAgain.Code != http.StatusOK {
 		t.Fatalf("new password did not persist after restart: %d %s", loginAgain.Code, loginAgain.Body.String())
+	}
+}
+
+func TestChangePasswordRejectsFewerThanSixCharacters(t *testing.T) {
+	a := testApp(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/password", strings.NewReader(`{"currentPassword":"irrelevant","newPassword":"12345","confirmPassword":"12345"}`))
+	resp := httptest.NewRecorder()
+	a.changeAdminPassword(resp, req)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("five-character password status=%d want=%d body=%s", resp.Code, http.StatusBadRequest, resp.Body.String())
 	}
 }

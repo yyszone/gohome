@@ -1,6 +1,6 @@
 ## 源码基线补充
 
-GoHome v0.2.28 基于本目录完整 v0.2.27 源码 ZIP，保留 v0.2.27 品牌图标与主题资源，并新增管理员密码管理、MIoT 设备语义修复、摄像头 HTTP 视频源、响应式细节和原子化远程部署。该包不包含用户未归档到 v0.2.27 ZIP 的本机私有修改。
+GoHome v0.2.29 基于本目录完整 v0.2.28 源码 ZIP，继承 v0.2.27 品牌资源、v0.2.28 设备识别/认证/摄像头/响应式页面/原子化部署改动，并新增 SSH 连接复用、自定义部署目录说明和 6 位管理员密码支持。该包不包含用户未归档到 v0.2.27 ZIP 的本机私有修改。
 
 # 源码基线说明
 
@@ -58,3 +58,13 @@ GoHome v0.2.25 基于当前工作区中的 GoHome v0.2.24 源码修改。v0.2.24
 ## v0.2.28 安全文件说明
 
 真实管理员密码和 Session 签名密钥只存在部署实例的 `data/` 目录中，不随源码 ZIP 分发。`gohome.admin.password` 与 `gohome.session.key` 均应限制为服务用户可读（0600），备份运行数据时按密钥处理，不要上传公开仓库。
+
+
+## v0.2.29 修改范围
+
+- `scripts/deploy.sh`：为 SSH/SCP 增加短生命周期 ControlMaster 连接复用；本次部署建立一条经过身份验证的主连接，后续命令共用同一控制套接字；自动创建 `DEPLOY_PATH` 并执行架构核验、原子替换和失败回滚。
+- `Makefile`：源码归档构建版本更新为 `0.2.29`；说明 `DEPLOY_PATH` 参数，默认 `/root/gohome`。
+- `internal/app/admin_password.go`：密码文件和修改密码接口的最小长度调整为 6 个字符（最大 128）；长度按 Unicode 字符计数。
+- `internal/app/admin_password_test.go`：修改密码集成测试使用 6 位数字，并新增 5 位密码拒绝测试。
+- `internal/app/web/index.html`：前端密码输入长度和提示同步调整；静态资源缓存版本更新为 `0.2.29`。
+- `README.md`、`UPGRADE-v0.2.29.md`、`docs/ARMBIAN-DEPLOYMENT.md` 与 `docs/PATCHING.md`：补充自定义目录、systemd 路径一致性和单次 SSH 密码认证说明。

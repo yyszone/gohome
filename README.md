@@ -1,4 +1,12 @@
-# GoHome v0.2.28
+# GoHome v0.2.29
+
+## v0.2.29 部署连接复用、自定义目录与简易管理员密码
+
+- 远程部署增加 SSH ControlMaster 连接复用：先建立一条 SSH 主连接，后续架构检查、目录创建、SCP 上传、二进制替换和 systemd 重启共用该连接；使用 SSH 密码认证时一次部署只需输入一次密码。
+- `DEPLOY_PATH` 现在作为明确的远程项目目录参数，默认 `/root/gohome`；允许指定如 `/opt/services/gohome` 的绝对路径，并在部署前自动创建目录。自定义目录必须与 `gohome.service` 的 `WorkingDirectory` 一致。
+- 管理员密码最低长度从 12 位调整为 6 个字符，支持 `123456` 这类简单密码；仍校验当前密码、确认密码，并在修改后轮换 Session 密钥。建议仅在可信家庭局域网使用 6 位数字密码。
+- 同步更新 README、升级说明、模块维护文档和回归测试。
+- 源码 ZIP 默认构建版本更新为 `0.2.29`，前端 favicon、Manifest、CSS 和 JS 引用统一使用 `?v=0.2.29`。
 
 ## v0.2.28 设备识别、认证管理与一键部署
 
@@ -171,7 +179,7 @@ Content-Type: application/json
 - 删除侧栏重复的 `sidebar-foot` 版本信息，版本元信息只保留在页面底部。
 - 首次访问显示 GoHome 内置登录页；管理员账号为 `admin`，首次随机密码保存在 `data/gohome.admin.password`，不使用共享默认密码。
 - 登录后由服务端签发 HttpOnly、SameSite Strict 的长期 Cookie；签名密钥写入 `data/gohome.session.key`，进程重启后仍可验证旧 Cookie。已认证的 GET 请求会滚动刷新 Cookie。
-- 页面支持修改管理员密码；修改成功后轮换 Session 密钥，其他浏览器的旧会话失效。新密码长度要求 12–128 个字符。
+- 页面支持修改管理员密码；修改成功后轮换 Session 密钥，其他浏览器的旧会话失效。新密码长度要求 6–128 个字符；支持 6 位数字，但短密码仅建议在可信家庭局域网使用。
 - 登录失败 5 次后对来源 IP 暂时限流；API 复制示例先从服务端密码文件读取密码，再使用 Cookie 调用设备 API。
 
 **安全警告：** 管理员密码和 Session 签名密钥保存在 `data/`，请保护整个目录（密码和 Session 文件为 0600），不要提交到 Git 或放入公开源码 ZIP。GoHome 可控制插座、摄像头等家庭设备，只能放在可信局域网内使用，不要把 17880 端口直接映射到公网。浏览器 Cookie 设为 10 年持久有效，但浏览器本身可能按自身策略限制最长保留时间；丢失 `data/gohome.session.key` 会使旧 Cookie 失效，需要重新登录。
@@ -613,14 +621,22 @@ curl -X POST -b "$JAR" \
 
 MIoT 主继电器控制在云端 `prop/set` 成功后立即更新本地状态并返回，不再把第二次云端读取放在 HTTP 响应路径中。服务端随后使用独立后台 Context 延迟执行一次精确属性读回，校准真实状态。浏览器端在点击时立即切换按钮，成功后合并服务端设备快照，失败时回滚；无需刷新整页。`chuangmi.plug.m3` 的指示灯（3/1）仍显示为状态，但不会再生成额外的属性开关按钮。
 
-## v0.2.28 一键部署
+## v0.2.29 一键部署
 
-已安装 systemd 服务且部署目录为默认 `/root/gohome` 时，在开发机执行：
+默认部署到远程 `/root/gohome`，已安装并运行 `gohome` systemd 服务时，在开发机执行：
 
 ```bash
 make deploy DEPLOY_HOST=root@192.168.31.63 DEPLOY_ARCH=arm64
 ```
 
-`DEPLOY_ARCH` 可选 `arm64`、`armv7`、`amd64`；可使用 `DEPLOY_PATH` 和 `DEPLOY_SERVICE` 覆盖远程项目目录或服务名。该命令自动测试、交叉编译、检查远程架构、上传、原子替换并重启服务；如果新进程未进入 active 状态，会恢复旧二进制。它只更新 `scripts/service-start.sh` 实际选择的架构二进制，不清理 `data/`。详见 `UPGRADE-v0.2.28.md`。
+部署到其他目录时，显式设置 `DEPLOY_PATH`：
+
+```bash
+make deploy DEPLOY_HOST=root@192.168.31.63 DEPLOY_ARCH=arm64 DEPLOY_PATH=/opt/services/gohome
+```
+
+`DEPLOY_PATH` 必须是 GoHome 项目根目录的绝对路径，默认 `/root/gohome`。自定义目录需先将完整项目目录放到该位置，并在该目录执行 `sudo sh scripts/install-systemd.sh`，让 systemd 的 `WorkingDirectory` 与部署目录保持一致；不能只改部署参数而让 systemd 仍指向旧目录。`DEPLOY_SERVICE` 可覆盖服务名。
+
+部署脚本使用 SSH ControlMaster 复用连接：SSH 密码认证时，建立主连接时输入一次密码，之后的架构检查、目录创建、SCP 上传和服务重启复用该连接。命令自动测试、交叉编译、检查远程架构、上传、原子替换并重启服务；如果新进程未进入 active 状态，会恢复旧二进制。只更新 `scripts/service-start.sh` 实际选择的架构二进制，不清理 `data/`。详见 `UPGRADE-v0.2.29.md`。
 
 后续按模块生成和应用 Patch 的目录分工见 `docs/PATCHING.md`。

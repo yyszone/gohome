@@ -103,3 +103,29 @@ journalctl -u gohome -n 50 --no-pager
 - GoHome 直接作为 systemd 主进程运行；启动脚本通过 `exec` 替换自身，不会额外保留 shell 常驻。
 - 不设置 CPU/内存硬限制，不新增轮询守护进程；没有活动设备页面时，现有状态调度器休眠等待事件。
 - 日志写入 systemd journal。只建议在可信家庭局域网访问，不要把 17880 端口直接暴露到公网。
+
+
+## 一键远程部署（开发机执行）
+
+默认项目目录为 `/root/gohome`：
+
+```bash
+make deploy DEPLOY_HOST=root@192.168.31.63 DEPLOY_ARCH=arm64
+```
+
+也可以指定其他绝对目录，例如：
+
+```bash
+make deploy DEPLOY_HOST=root@192.168.31.63 DEPLOY_ARCH=arm64 DEPLOY_PATH=/opt/services/gohome
+```
+
+`DEPLOY_PATH` 是远程 GoHome 项目根目录，默认 `/root/gohome`。首次使用自定义目录时，先将完整项目目录（包含 `scripts/`、`deploy/` 和架构二进制）放到目标目录，再在目标设备上运行：
+
+```bash
+cd /opt/services/gohome
+sudo sh scripts/install-systemd.sh
+```
+
+这一步会生成指向当前目录的 `gohome.service`。之后 `DEPLOY_PATH` 必须与 systemd 服务实际使用的项目目录一致。部署脚本会自动创建目录，但不会自动迁移已有服务或复制完整源码。
+
+SSH 密码登录时，部署脚本会先建立 SSH ControlMaster 主连接；架构检查、目录创建、SCP 上传、二进制切换和 systemd 重启复用该连接，因此一次部署只需输入一次 SSH 密码。脚本结束时会关闭临时连接。
