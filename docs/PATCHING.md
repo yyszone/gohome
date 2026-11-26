@@ -1,6 +1,6 @@
 # GoHome 源码模块与后续 Patch 维护
 
-本目录是 GoHome v0.2.29 源码基线。建议后续功能继续按职责拆分到独立文件，避免把认证、设备语义、品牌协议和前端页面逻辑集中堆到 `main.go`。
+本目录是 GoHome v0.2.31 源码基线。建议后续功能继续按职责拆分到独立文件，避免把认证、设备语义、品牌协议和前端页面逻辑集中堆到 `main.go`。
 
 ## 目录职责
 
@@ -47,7 +47,7 @@ make armbian
 ```bash
 git init
 git add .
-git commit -m "baseline: GoHome v0.2.29"
+git commit -m "baseline: GoHome v0.2.31"
 
 # 修改某个功能后，只导出对应模块的 patch
 git diff -- internal/app/device_semantics.go internal/app/providers_xiaomi_miot.go > robot-state.patch
@@ -67,11 +67,26 @@ git apply feature.patch
 
 ## 版本约定
 
-- 源码 ZIP 不携带 `.git`，因此 `Makefile` 的 `SOURCE_VERSION` 是源码构建的版本来源。当前归档版本为 `0.2.29`。
-- 前端静态资源统一使用 `?v=0.2.29`，发布前更新版本时同步修改 `index.html` 和 `site.webmanifest`。
+- 源码 ZIP 不携带 `.git`，因此 `Makefile` 的 `SOURCE_VERSION` 是源码构建的版本来源。当前归档版本为 `0.2.31`。
+- 前端静态资源统一使用 `?v=0.2.31`，发布前更新版本时同步修改 `index.html` 和 `site.webmanifest`。
 - 新增 Go 逻辑时同步新增单元测试；设备协议分类应以规格描述、单位和服务元数据为依据，避免只根据单个属性名猜测。
 - `data/` 是运行数据目录，不应放入源码 ZIP；不能将 `gohome.json`、Vault 密钥、Session 密钥或管理员密码文件提交到 Git。
 
 ## 摄像头预览边界
 
 网页预览要求摄像头或视频网关提供浏览器可以访问的 HTTP/HTTPS 视频源。当前前端可直接预览 MJPEG、MP4、WebM；HLS (`.m3u8`) 取决于浏览器原生支持。RTSP、小米私有 P2P 和需要厂商 App 解密的流不能直接塞进 HTML `<video>`。这类设备需要先在局域网运行 go2rtc / MediaMTX 等网关，将真实支持的源转换成浏览器支持的流，再把 HTTP 地址填入 GoHome。GoHome 本身不伪造摄像头流，也不会自动获取小米摄像头的私有视频凭证。
+
+
+## v0.2.30 小米 MIoT 兼容性
+
+- `internal/app/providers_xiaomi_miot.go`：规格索引版本候选、`iid` 坐标回退、路由器旧规格重试、路由器遥测映射、扫地机器人状态和音箱状态。
+- `internal/app/miot_compat_test.go`：为上述映射与属性匹配新增独立回归测试。
+- 设备没有任何 `access: read` 属性时属于 MIoT 能力限制，跳过读取而不是生成“后台状态同步失败”。属性 ID 仍完全不匹配时会保留警告，避免静默吞掉真实请求失败。
+
+
+## v0.2.31 设备级同步日志
+
+- `internal/app/provider_state_poller.go`：`StateIssue` 作为设备级同步受限信息单独汇总；日志显式说明账号连接正常、其他设备继续同步。
+- `noteProviderPollIssue` 仍处理云端/轮询流程异常；`noteProviderDeviceStateIssues` 专门处理设备 MIoT 状态异常，两者限频键互相独立。
+- MIoT 规格库未收录型号会翻译为“型号暂未收录到 MIoT 规格库，暂时无法读取该设备实时状态”，同时在设备名后保留原始 model。
+- 新增 `internal/app/provider_state_poller_test.go` 验证日志文案与多设备摘要。

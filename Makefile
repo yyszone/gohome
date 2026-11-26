@@ -9,7 +9,7 @@ MAIN_PKG := ./cmd/gohome
 # 注意：git rev-list --count 是提交次数，不是每执行一次 make 就 +1。
 VERSION_PREFIX ?= 0.2
 # 源码 ZIP 不包含 .git：使用源码声明的版本，避免退化成 0.2.0。
-SOURCE_VERSION ?= 0.2.29
+SOURCE_VERSION ?= 0.2.31
 BUILD_DATE := $(shell date +%Y%m%d)
 GIT_ROOT := $(shell git rev-parse --show-toplevel 2>/dev/null)
 ifneq ($(strip $(GIT_ROOT)),)

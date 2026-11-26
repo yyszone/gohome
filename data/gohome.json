@@ -13,7 +13,7 @@
       "online": true,
       "power": false,
       "canControl": true,
-      "lastSeen": "2026-11-26T08:48:44.352878724+08:00",
+      "lastSeen": "2026-11-26T09:14:55.347844673+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:24:40.275280153+08:00"
     },
@@ -66,7 +66,7 @@
         "source": "eWeLink",
         "todaySource": "云端未返回日累计；等待有效功率或月累计采样",
         "weekSource": "云端周统计仅部分型号提供；等待本机每日累计",
-        "updatedAt": "2026-11-26T08:50:10.008392115+08:00"
+        "updatedAt": "2026-11-26T09:15:28.037926213+08:00"
       },
       "lastSeen": "2026-11-25T05:04:45.200890717Z",
       "demo": false,
@@ -160,7 +160,7 @@
       "category": "插座",
       "protocol": "xiaomi-cloud",
       "online": true,
-      "power": true,
+      "power": false,
       "canControl": true,
       "controls": [
         {
@@ -171,7 +171,7 @@
           "siid": 2,
           "piid": 1,
           "format": "bool",
-          "value": true
+          "value": false
         },
         {
           "id": "prop:3:1",
@@ -187,13 +187,13 @@
       "energy": {
         "supported": true,
         "source": "小米 MIoT",
-        "updatedAt": "2026-11-26T08:50:10.21100206+08:00"
+        "updatedAt": "2026-11-26T09:15:28.501808565+08:00"
       },
       "attributes": [
         {
           "key": "temperature",
           "label": "温度",
-          "value": "41",
+          "value": "42",
           "unit": "°C"
         },
         {
@@ -204,11 +204,11 @@
         {
           "key": "on",
           "label": "开关状态",
-          "value": "开启"
+          "value": "关闭"
         }
       ],
-      "value": "温度 41°C · 开关状态 开启",
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "value": "温度 42°C · 开关状态 关闭",
+      "lastSeen": "2026-11-26T09:15:13.078521992+08:00",
       "demo": false,
       "createdAt": "2026-11-24T22:27:08.251641356+08:00"
     },
@@ -250,7 +250,7 @@
       "energy": {
         "supported": true,
         "source": "小米 MIoT",
-        "updatedAt": "2026-11-26T08:50:10.233477824+08:00"
+        "updatedAt": "2026-11-26T09:15:28.567943812+08:00"
       },
       "attributes": [
         {
@@ -271,7 +271,7 @@
         }
       ],
       "value": "温度 41°C · 开关状态 开启",
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083458263Z"
     },
@@ -832,7 +832,7 @@
         }
       ],
       "value": "开关状态 关闭 · 色温 4000K",
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083478889Z"
     },
@@ -848,7 +848,7 @@
       "protocol": "xiaomi-cloud",
       "online": true,
       "canControl": false,
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083490764Z"
     },
@@ -864,7 +864,7 @@
       "protocol": "xiaomi-cloud",
       "online": true,
       "canControl": false,
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083499472Z"
     },
@@ -1199,7 +1199,12 @@
           "format": "uint8"
         }
       ],
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-26T09:15:29.08867001+08:00"
+      },
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083508139Z"
     },
@@ -1308,14 +1313,6 @@
           "siid": 2,
           "piid": 17,
           "format": "bool"
-        },
-        {
-          "id": "action:2:1",
-          "kind": "action",
-          "name": "Reboot",
-          "description": "Reboot",
-          "siid": 2,
-          "aiid": 1
         },
         {
           "id": "prop:3:3",
@@ -1534,7 +1531,12 @@
           "format": "uint8"
         }
       ],
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "energy": {
+        "supported": true,
+        "source": "小米 MIoT",
+        "updatedAt": "2026-11-26T09:15:29.834890181+08:00"
+      },
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083519805Z"
     },
@@ -2764,9 +2766,9 @@
       "energy": {
         "supported": true,
         "source": "小米 MIoT",
-        "updatedAt": "2026-11-26T08:50:10.334913628+08:00"
+        "updatedAt": "2026-11-26T09:15:28.278743278+08:00"
       },
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083537681Z"
     },
@@ -3281,42 +3283,6 @@
           ]
         },
         {
-          "id": "prop:8:34",
-          "kind": "property",
-          "name": "Car Detection",
-          "description": "Car Detection",
-          "siid": 8,
-          "piid": 34,
-          "format": "bool"
-        },
-        {
-          "id": "prop:8:35",
-          "kind": "property",
-          "name": "Car Detection Area",
-          "description": "Car Detection Area",
-          "siid": 8,
-          "piid": 35,
-          "format": "string"
-        },
-        {
-          "id": "prop:8:37",
-          "kind": "property",
-          "name": "Person Approaching Car Mode",
-          "description": "Person Approaching Car Mode",
-          "siid": 8,
-          "piid": 37,
-          "format": "bool"
-        },
-        {
-          "id": "prop:8:38",
-          "kind": "property",
-          "name": "Car Detected Mode",
-          "description": "Car Detected Mode",
-          "siid": 8,
-          "piid": 38,
-          "format": "bool"
-        },
-        {
           "id": "action:9:1",
           "kind": "action",
           "name": "Start P2P Stream",
@@ -3405,106 +3371,40 @@
           "format": "bool"
         },
         {
-          "id": "action:40:1",
-          "kind": "action",
-          "name": "Start Check",
-          "description": "Start Check",
-          "siid": 40,
-          "aiid": 1,
-          "inputs": [
-            {
-              "name": "Self Check Items",
-              "format": "uint8",
-              "options": [
-                {
-                  "value": 0,
-                  "label": "Sdcard"
-                },
-                {
-                  "value": 1,
-                  "label": "Night Vision"
-                },
-                {
-                  "value": 2,
-                  "label": "Night Vision Reset"
-                },
-                {
-                  "value": 3,
-                  "label": "PTZ"
-                },
-                {
-                  "value": 4,
-                  "label": "Frame"
-                },
-                {
-                  "value": 5,
-                  "label": "MIC"
-                }
-              ]
-            }
-          ]
+          "id": "prop:17:4",
+          "kind": "property",
+          "name": "people-fence-out",
+          "description": "people-fence-out",
+          "siid": 17,
+          "piid": 4,
+          "format": "bool"
         },
         {
-          "id": "action:40:2",
-          "kind": "action",
-          "name": "Stop Check",
-          "description": "Stop Check",
-          "siid": 40,
-          "aiid": 2
+          "id": "prop:18:1",
+          "kind": "property",
+          "name": "warning-repetition",
+          "description": "warning-repetition",
+          "siid": 18,
+          "piid": 1,
+          "format": "string"
         },
         {
-          "id": "action:40:3",
-          "kind": "action",
-          "name": "Sync Manual Check",
-          "description": "Sync Manual Check",
-          "siid": 40,
-          "aiid": 3,
-          "inputs": [
-            {
-              "name": "Self Check Items",
-              "format": "uint8",
-              "options": [
-                {
-                  "value": 0,
-                  "label": "Sdcard"
-                },
-                {
-                  "value": 1,
-                  "label": "Night Vision"
-                },
-                {
-                  "value": 2,
-                  "label": "Night Vision Reset"
-                },
-                {
-                  "value": 3,
-                  "label": "PTZ"
-                },
-                {
-                  "value": 4,
-                  "label": "Frame"
-                },
-                {
-                  "value": 5,
-                  "label": "MIC"
-                }
-              ]
-            },
-            {
-              "name": "Manual Check Results",
-              "format": "uint8",
-              "options": [
-                {
-                  "value": 0,
-                  "label": "Normal"
-                },
-                {
-                  "value": 1,
-                  "label": "Abnormal"
-                }
-              ]
-            }
-          ]
+          "id": "prop:18:2",
+          "kind": "property",
+          "name": "enable-time-period",
+          "description": "enable-time-period",
+          "siid": 18,
+          "piid": 2,
+          "format": "string"
+        },
+        {
+          "id": "prop:18:3",
+          "kind": "property",
+          "name": "warning-light-switch",
+          "description": "warning-light-switch",
+          "siid": 18,
+          "piid": 3,
+          "format": "bool"
         }
       ],
       "attributes": [
@@ -3525,7 +3425,7 @@
         }
       ],
       "value": "开关状态 开启 · 指示灯 开启",
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083554972Z"
     },
@@ -3833,7 +3733,7 @@
           "aiid": 1
         }
       ],
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083568139Z"
     },
@@ -4524,7 +4424,7 @@
         {
           "key": "temperature",
           "label": "温度",
-          "value": "12.5",
+          "value": "12.8",
           "unit": "°C"
         },
         {
@@ -4534,8 +4434,8 @@
           "unit": "%"
         }
       ],
-      "value": "温度 12.5°C · 湿度 59.3%",
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "value": "温度 12.8°C · 湿度 59.3%",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083639139Z"
     },
@@ -4551,7 +4451,7 @@
       "protocol": "xiaomi-cloud",
       "online": true,
       "canControl": false,
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083651514Z"
     },
@@ -4567,7 +4467,7 @@
       "protocol": "xiaomi-cloud",
       "online": true,
       "canControl": false,
-      "lastSeen": "2026-11-26T08:48:49.296071758+08:00",
+      "lastSeen": "2026-11-26T09:14:58.570336896+08:00",
       "demo": false,
       "createdAt": "2026-11-25T14:26:34.083664848Z"
     }
@@ -4595,6 +4495,24 @@
   ],
   "discovery": [],
   "logs": [
+    {
+      "id": "01f93da50fd5e831",
+      "level": "success",
+      "message": "[小米] 小冰箱 开关已关闭",
+      "at": "2026-11-26T09:15:13.081002638+08:00"
+    },
+    {
+      "id": "347b48084d319b99",
+      "level": "warn",
+      "message": "[小米 / 米家] 有 1 台设备实时状态未同步（账号连接正常，其他设备继续同步）：小米手环3 NFC版（hmpace.bracelet.v3nfc）：型号暂未收录到 MIoT 规格库，GoHome 暂时无法读取该设备的实时状态（不是设备离线，也不是账号登录失败）",
+      "at": "2026-11-26T09:14:58.564845067+08:00"
+    },
+    {
+      "id": "d8089cce824f7319",
+      "level": "warn",
+      "message": "[小米 / 米家] 后台状态同步失败：MIoT 实时属性未全部读取：小米手环3 NFC版(hmpace.bracelet.v3nfc): MIoT 规格库未收录型号 hmpace.bracelet.v3nfc",
+      "at": "2026-11-26T09:06:59.703014773+08:00"
+    },
     {
       "id": "4b322fa10bac7fac",
       "level": "success",
@@ -5176,24 +5094,6 @@
       "level": "info",
       "message": "设备已更新：小冰箱",
       "at": "2026-11-25T06:57:58.881701069+08:00"
-    },
-    {
-      "id": "d82b170d287f456c",
-      "level": "info",
-      "message": "设备已更新：小冰箱",
-      "at": "2026-11-24T22:29:20.577210989+08:00"
-    },
-    {
-      "id": "9fc247b49fec7939",
-      "level": "info",
-      "message": "设备已更新：小冰箱",
-      "at": "2026-11-24T22:29:19.126209348+08:00"
-    },
-    {
-      "id": "25a07385cee70667",
-      "level": "info",
-      "message": "设备已更新：小冰箱",
-      "at": "2026-11-24T22:29:16.441424709+08:00"
     }
   ],
   "energyHistory": {

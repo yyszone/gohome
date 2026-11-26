@@ -671,11 +671,13 @@ func xiaomiFetchDevicesWithOptions(ctx context.Context, s providerSecret, includ
 	return out, nil
 }
 
+type miotSpecInstance struct {
+	Model string `json:"model"`
+	Type  string `json:"type"`
+}
+
 type miotSpecIndex struct {
-	Instances []struct {
-		Model string `json:"model"`
-		Type  string `json:"type"`
-	} `json:"instances"`
+	Instances []miotSpecInstance `json:"instances"`
 }
 
 type miotSpecDocument struct {
@@ -717,10 +719,59 @@ type miotEnergyRef struct {
 
 var miotSpecCache = struct {
 	sync.Mutex
-	indexAt time.Time
-	models  map[string]string
-	specs   map[string]miotSpecDocument
-}{models: map[string]string{}, specs: map[string]miotSpecDocument{}}
+	indexAt  time.Time
+	models   map[string]string
+	versions map[string][]string
+	specs    map[string]miotSpecDocument
+}{models: map[string]string{}, versions: map[string][]string{}, specs: map[string]miotSpecDocument{}}
+
+// miotSpecTypeVersion extracts the final numeric version from a MIoT type URN.
+// The public instance index can contain multiple versions for one model; always
+// choose the newest instead of depending on an unstable array/map iteration order.
+func miotSpecTypeVersion(typ string) int {
+	parts := strings.Split(strings.TrimSpace(typ), ":")
+	if len(parts) == 0 {
+		return 0
+	}
+	version, _ := strconv.Atoi(parts[len(parts)-1])
+	return version
+}
+
+func buildMIoTModelTypeVersions(instances []miotSpecInstance) map[string][]string {
+	versions := make(map[string][]string, len(instances))
+	seen := make(map[string]map[string]bool, len(instances))
+	for _, item := range instances {
+		model, typ := strings.TrimSpace(item.Model), strings.TrimSpace(item.Type)
+		if model == "" || typ == "" {
+			continue
+		}
+		if seen[model] == nil {
+			seen[model] = map[string]bool{}
+		}
+		if seen[model][typ] {
+			continue
+		}
+		seen[model][typ] = true
+		versions[model] = append(versions[model], typ)
+	}
+	for model := range versions {
+		sort.SliceStable(versions[model], func(i, j int) bool {
+			return miotSpecTypeVersion(versions[model][i]) > miotSpecTypeVersion(versions[model][j])
+		})
+	}
+	return versions
+}
+
+func buildMIoTModelTypeIndex(instances []miotSpecInstance) map[string]string {
+	versions := buildMIoTModelTypeVersions(instances)
+	models := make(map[string]string, len(versions))
+	for model, candidates := range versions {
+		if len(candidates) > 0 {
+			models[model] = candidates[0]
+		}
+	}
+	return models
+}
 
 // lookupMIoTModelType tolerates model identifiers whose letter casing differs
 // from the specification index, while preserving an exact-match fast path.
@@ -769,14 +820,11 @@ func fetchMIoTModelType(ctx context.Context, model string) (string, error) {
 	if err := json.Unmarshal(body, &index); err != nil {
 		return "", fmt.Errorf("解析 MIoT 规格索引失败：%w", err)
 	}
-	models := make(map[string]string, len(index.Instances))
-	for _, item := range index.Instances {
-		if item.Model != "" && item.Type != "" {
-			models[item.Model] = item.Type
-		}
-	}
+	versions := buildMIoTModelTypeVersions(index.Instances)
+	models := buildMIoTModelTypeIndex(index.Instances)
 	miotSpecCache.Lock()
 	miotSpecCache.models = models
+	miotSpecCache.versions = versions
 	miotSpecCache.indexAt = time.Now()
 	typ := lookupMIoTModelType(models, model)
 	miotSpecCache.Unlock()
@@ -784,6 +832,31 @@ func fetchMIoTModelType(ctx context.Context, model string) (string, error) {
 		return "", fmt.Errorf("MIoT 规格库未收录型号 %s", model)
 	}
 	return typ, nil
+}
+
+// fetchMIoTModelTypeCandidates returns specification versions newest-first.
+// Router firmware can lag behind the public model index, so a failed property
+// coordinate match can retry an older published version without changing the
+// account authentication method.
+func fetchMIoTModelTypeCandidates(ctx context.Context, model string) ([]string, error) {
+	latest, err := fetchMIoTModelType(ctx, model)
+	if err != nil {
+		return nil, err
+	}
+	miotSpecCache.Lock()
+	defer miotSpecCache.Unlock()
+	var candidates []string
+	for key, values := range miotSpecCache.versions {
+		if !strings.EqualFold(strings.TrimSpace(key), strings.TrimSpace(model)) {
+			continue
+		}
+		candidates = append(candidates, values...)
+		break
+	}
+	if len(candidates) == 0 {
+		candidates = []string{latest}
+	}
+	return candidates, nil
 }
 
 func fetchMIoTSpec(ctx context.Context, typ string) (miotSpecDocument, error) {
@@ -1002,16 +1075,139 @@ func xiaomiEncryptedPostWithTimeout(ctx context.Context, s providerSecret, pathP
 	return decoded, nil
 }
 
+// miotPropertyResult accepts both modern prop/get records (siid/piid) and
+// older router/firmware responses that expose only the dotted `iid` field.
+// Some gateways also serialize numeric identifiers as strings.
+type miotPropertyResult struct {
+	DID     string `json:"did"`
+	IID     string `json:"iid"`
+	SIID    any    `json:"siid"`
+	PIID    any    `json:"piid"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Value   any    `json:"value"`
+}
+
+func miotIdentifierInt(raw any) int {
+	switch value := raw.(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	case json.Number:
+		n, err := value.Int64()
+		if err == nil {
+			return int(n)
+		}
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+func (item miotPropertyResult) coordinateCandidates() [][2]int {
+	candidates := make([][2]int, 0, 2)
+	explicit := [2]int{miotIdentifierInt(item.SIID), miotIdentifierInt(item.PIID)}
+	if explicit[0] > 0 && explicit[1] > 0 {
+		candidates = append(candidates, explicit)
+	}
+	// The official MIoT cloud often includes iid like "0.2.1" alongside
+	// siid=2/piid=1. Older router firmware may return only iid, or return
+	// stale explicit identifiers while retaining the canonical iid string.
+	parts := strings.FieldsFunc(item.IID, func(r rune) bool {
+		return r == '.' || r == '-' || r == '/' || r == ':'
+	})
+	if len(parts) >= 2 {
+		siid, siidErr := strconv.Atoi(parts[len(parts)-2])
+		piid, piidErr := strconv.Atoi(parts[len(parts)-1])
+		candidate := [2]int{siid, piid}
+		if siidErr == nil && piidErr == nil && siid > 0 && piid > 0 && (len(candidates) == 0 || candidates[0] != candidate) {
+			candidates = append(candidates, candidate)
+		}
+	}
+	return candidates
+}
+
+func (item miotPropertyResult) coordinates() (siid, piid int) {
+	candidates := item.coordinateCandidates()
+	if len(candidates) == 0 {
+		return 0, 0
+	}
+	return candidates[0][0], candidates[0][1]
+}
+
+func matchMIoTPropertyResult[T any](item miotPropertyResult, refMap map[string]T) (T, int, int, bool) {
+	var zero T
+	for _, candidate := range item.coordinateCandidates() {
+		if ref, ok := refMap[fmt.Sprintf("%d:%d", candidate[0], candidate[1])]; ok {
+			return ref, candidate[0], candidate[1], true
+		}
+	}
+	return zero, 0, 0, false
+}
+
+func miotRefsSummary(refs []miotDevicePropertyRef, limit int) string {
+	if limit <= 0 {
+		limit = 8
+	}
+	parts := make([]string, 0, minInt(len(refs), limit))
+	for _, ref := range refs {
+		if len(parts) >= limit {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%d/%d", ref.SIID, ref.PIID))
+	}
+	if len(refs) > limit {
+		parts = append(parts, fmt.Sprintf("…共%d项", len(refs)))
+	}
+	return strings.Join(parts, ",")
+}
+
+func miotResultsSummary(items []miotPropertyResult, limit int) string {
+	if limit <= 0 {
+		limit = 8
+	}
+	parts := make([]string, 0, minInt(len(items), limit))
+	for _, item := range items {
+		if len(parts) >= limit {
+			break
+		}
+		candidates := item.coordinateCandidates()
+		if len(candidates) > 0 {
+			ids := make([]string, 0, len(candidates))
+			for _, candidate := range candidates {
+				ids = append(ids, fmt.Sprintf("%d/%d", candidate[0], candidate[1]))
+			}
+			parts = append(parts, strings.Join(ids, "|"))
+		} else if item.IID != "" {
+			parts = append(parts, "iid="+truncate(item.IID, 24))
+		} else {
+			parts = append(parts, "<无SIID/PIID>")
+		}
+	}
+	if len(items) > limit {
+		parts = append(parts, fmt.Sprintf("…共%d条", len(items)))
+	}
+	return strings.Join(parts, ",")
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func applyMIoTEnergyResult(e *EnergyMetrics, refs []miotEnergyRef, body []byte) {
 	var env struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Result  []struct {
-			SIID  int `json:"siid"`
-			PIID  int `json:"piid"`
-			Code  int `json:"code"`
-			Value any `json:"value"`
-		} `json:"result"`
+		Code    int                  `json:"code"`
+		Message string               `json:"message"`
+		Result  []miotPropertyResult `json:"result"`
 	}
 	if json.Unmarshal(body, &env) != nil || env.Code != 0 {
 		return
@@ -1024,7 +1220,7 @@ func applyMIoTEnergyResult(e *EnergyMetrics, refs []miotEnergyRef, body []byte) 
 		if item.Code != 0 {
 			continue
 		}
-		ref, ok := refMap[fmt.Sprintf("%d:%d", item.SIID, item.PIID)]
+		ref, _, _, ok := matchMIoTPropertyResult(item, refMap)
 		if !ok {
 			continue
 		}
@@ -1196,6 +1392,37 @@ func miotDisplayProperty(name, description, serviceName, serviceDescription, ser
 	if strings.EqualFold(strings.TrimSpace(unit), "kelvin") || strings.EqualFold(u, "K") {
 		return "color_temperature", "色温", "K", 1
 	}
+	// Router telemetry has service-specific names and is not an appliance power
+	// switch. Keep it as network status so router Wi-Fi toggles never overwrite
+	// Device.Power (which represents a mains relay on other devices).
+	if strings.Contains(service, "router") {
+		switch n {
+		case "downloadspeed":
+			return "router_download_speed", "下载速率", "", 1
+		case "uploadspeed":
+			return "router_upload_speed", "上传速率", "", 1
+		case "connecteddevicenumber", "connecteddevicecount", "clientcount":
+			return "router_connected_devices", "已连接设备", "台", 1
+		case "ipaddress", "wanip":
+			return "router_ip", "路由器 IP", "", 1
+		case "status", "routerstatus":
+			return "router_status", "路由器状态", "", 1
+		case "fault", "devicefault":
+			return "router_fault", "路由器故障码", "", 1
+		case "rssi", "signalstrength":
+			return "router_signal", "信号强度", "", 1
+		case "onlinetime":
+			return "router_online_time", "在线时长", "分钟", 1
+		}
+	}
+	if strings.Contains(service, "vacuum") || strings.Contains(service, "robotcleaner") {
+		switch n {
+		case "status", "workingstatus":
+			return "vacuum_status", "清扫状态", "", 1
+		case "fault", "devicefault":
+			return "vacuum_fault", "故障码", "", 1
+		}
+	}
 	// Several environmental sensors expose generic property names (value,
 	// current or measurement). Unit and MIoT service identity are more reliable
 	// than a generic name when deciding temperature versus humidity.
@@ -1242,6 +1469,8 @@ func miotDisplayProperty(name, description, serviceName, serviceDescription, ser
 		return "tvoc", "TVOC", firstNonEmpty(u, "mg/m³"), 1
 	case n == "volume" || n == "volumelevel" || strings.Contains(t, "音量"):
 		return "volume", "音量", firstNonEmpty(u, "%"), 1
+	case n == "sleepmode" || n == "sleepstate":
+		return "sleep_mode", "睡眠模式", "", 1
 	case n == "isvolumemuted" || n == "mute" || n == "ismuted" || strings.Contains(t, "静音"):
 		return "muted", "静音", "", 1
 	case n == "playbackstate" || n == "playstatus" || n == "playstate" || n == "playing" || n == "mediastate":
@@ -1406,8 +1635,43 @@ func miotReadDeviceRefs(spec miotSpecDocument) []miotDevicePropertyRef {
 // boolean properties named "on". For chuangmi.plug.m3 the public specification
 // defines switch.on (2/1) as the outlet relay and indicator-light.on (3/1) as
 // the LED. Never infer the relay from the last boolean result returned by cloud.
+func isXiaomiRouterModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.Contains(model, ".router.") || strings.HasPrefix(model, "xiaomi.router.")
+}
+
 func miotReadDeviceRefsForModel(spec miotSpecDocument, model string) []miotDevicePropertyRef {
 	refs := miotReadDeviceRefs(spec)
+	modelLower := strings.ToLower(strings.TrimSpace(model))
+	if isXiaomiRouterModel(modelLower) {
+		for i := range refs {
+			if refs[i].Field != "on" {
+				continue
+			}
+			service := miotNormalizedName(refs[i].ServiceName + " " + refs[i].ServiceDescription)
+			switch {
+			case strings.Contains(service, "guest"):
+				refs[i].Field, refs[i].Label = "router_guest_wifi", "访客 Wi-Fi"
+			case miotIndicatorService(refs[i].ServiceName, refs[i].ServiceDescription, refs[i].ServiceType):
+				refs[i].Field, refs[i].Label = "router_indicator", "路由器指示灯"
+			default:
+				refs[i].Field, refs[i].Label = "router_wifi", "路由器 Wi-Fi"
+			}
+		}
+		return refs
+	}
+	if strings.Contains(modelLower, ".vacuum.") || strings.Contains(modelLower, "vacuum") {
+		filtered := refs[:0]
+		for _, ref := range refs {
+			// Vacuum `on` is not a mains relay. Several MIoT specs expose it as
+			// a string and the actual live operating state is vacuum.status.
+			if ref.Field == "on" || ref.Field == "indicator_light" {
+				continue
+			}
+			filtered = append(filtered, ref)
+		}
+		return filtered
+	}
 	if !strings.EqualFold(strings.TrimSpace(model), "chuangmi.plug.m3") {
 		return normalizeMIoTPowerRefs(refs)
 	}
@@ -1493,6 +1757,10 @@ func miotLiveStateRefs(refs []miotDevicePropertyRef) []miotDevicePropertyRef {
 	// energy counters remain on the normal account-sync/statistics path.
 	allowed := map[string]bool{
 		"on": true, "indicator_light": true, "temperature": true, "humidity": true, "battery": true,
+		"router_download_speed": true, "router_upload_speed": true, "router_connected_devices": true,
+		"router_ip": true, "router_status": true, "router_fault": true, "router_signal": true,
+		"router_online_time": true, "router_wifi": true, "router_guest_wifi": true, "router_indicator": true,
+		"vacuum_status": true, "vacuum_fault": true, "sleep_mode": true,
 		"illuminance": true, "pressure": true, "pm25": true, "co2": true, "tvoc": true,
 		"volume": true, "playback": true, "muted": true, "motion": true,
 		"motion_enabled": true, "recording": true, "storage": true, "contact": true,
@@ -1569,16 +1837,9 @@ func miotMeterEligible(category string) bool {
 // trustworthy source for the device's current state.
 func parseMIoTPowerPropertyResponse(body []byte, did string, siid, piid int) (bool, error) {
 	var envelope struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Result  []struct {
-			DID     string `json:"did"`
-			SIID    int    `json:"siid"`
-			PIID    int    `json:"piid"`
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-			Value   any    `json:"value"`
-		} `json:"result"`
+		Code    int                  `json:"code"`
+		Message string               `json:"message"`
+		Result  []miotPropertyResult `json:"result"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return false, fmt.Errorf("解析 MIoT 电源状态响应失败：%w", err)
@@ -1587,7 +1848,14 @@ func parseMIoTPowerPropertyResponse(body []byte, did string, siid, piid int) (bo
 		return false, fmt.Errorf("MIoT 电源状态读取业务错误 code=%d message=%s", envelope.Code, envelope.Message)
 	}
 	for _, item := range envelope.Result {
-		if item.SIID != siid || item.PIID != piid || (item.DID != "" && did != "" && item.DID != did) {
+		matched := false
+		for _, candidate := range item.coordinateCandidates() {
+			if candidate[0] == siid && candidate[1] == piid {
+				matched = true
+				break
+			}
+		}
+		if !matched || (item.DID != "" && did != "" && item.DID != did) {
 			continue
 		}
 		if item.Code != 0 {
@@ -1749,6 +2017,15 @@ func guessCategoryWithMIoT(name, model, typ string) string {
 func miotFormatAttribute(ref miotDevicePropertyRef, raw any) string {
 	if raw == nil {
 		return ""
+	}
+	if ref.Field == "vacuum_status" {
+		if n := numericMetric(raw); n != nil {
+			labels := []string{"休眠", "待机", "已暂停", "正在回充", "充电中", "清扫中", "扫拖中", "拖地中", "升级中", "建图中", "已充满"}
+			index := int(*n)
+			if index >= 0 && index < len(labels) {
+				return labels[index]
+			}
+		}
 	}
 	if ref.Field == "on" || ref.Field == "indicator_light" {
 		if enabled, ok := miotBoolValue(raw); ok {
@@ -1923,8 +2200,11 @@ func xiaomiPopulateLiveDeviceDetailsBatched(ctx context.Context, secret provider
 				refs = filtered
 			}
 			plans[index].refs = refs
+			// An empty read plan is a capability limitation declared by the MIoT
+			// spec, not a failed cloud request. Keep such devices online and quiet;
+			// the poller only warns after an actual prop/get request fails.
 			if len(refs) == 0 {
-				devices[index].StateIssue = "MIoT 规格中没有可读取的实时属性（access 不包含 read）"
+				devices[index].StateIssue = ""
 			}
 		}(i)
 	}
@@ -1961,9 +2241,9 @@ func xiaomiPopulateLiveDeviceDetailsBatched(ctx context.Context, secret provider
 				return
 			}
 			var envelope struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-				Result  []any  `json:"result"`
+				Code    int                  `json:"code"`
+				Message string               `json:"message"`
+				Result  []miotPropertyResult `json:"result"`
 			}
 			if err := json.Unmarshal(body, &envelope); err != nil {
 				devices[index].StateIssue = "解析 MIoT prop/get 响应失败：" + err.Error()
@@ -1981,12 +2261,15 @@ func xiaomiPopulateLiveDeviceDetailsBatched(ctx context.Context, secret provider
 				}
 			}
 			applied := applyMIoTDeviceResultForDID(&devices[index], plans[index].refs, body, false)
-			if applied == 0 {
-				if isVacuumDevice(devices[index]) {
-					devices[index].StateIssue = ""
-					return
+			if applied == 0 && len(envelope.Result) > 0 && isXiaomiRouterModel(devices[index].Model) {
+				if alternateRefs, alternateApplied, ok := retryXiaomiRouterWithOlderSpec(ctx, secret, &devices[index], types[index]); ok {
+					applied = alternateApplied
+					plans[index].refs = alternateRefs
+					needsPowerState = false
 				}
-				devices[index].StateIssue = fmt.Sprintf("MIoT prop/get 返回 %d 条记录，但没有匹配到请求的 SIID/PIID", len(envelope.Result))
+			}
+			if applied == 0 {
+				devices[index].StateIssue = fmt.Sprintf("MIoT prop/get 返回 %d 条记录，无法匹配请求属性；请求 SIID/PIID=[%s]，响应=[%s]", len(envelope.Result), miotRefsSummary(plans[index].refs, 10), miotResultsSummary(envelope.Result, 10))
 				return
 			}
 			if needsPowerState && devices[index].Power == nil && !isVacuumDevice(devices[index]) {
@@ -1997,6 +2280,65 @@ func xiaomiPopulateLiveDeviceDetailsBatched(ctx context.Context, secret provider
 		}(i)
 	}
 	wg.Wait()
+}
+
+// retryXiaomiRouterWithOlderSpec handles router firmware whose MIoT service
+// identifiers lag behind the newest public spec. It retries at most two older
+// published versions using the same legacy account session and accepts a result
+// only when at least one returned property matches that version's SIID/PIID.
+func retryXiaomiRouterWithOlderSpec(ctx context.Context, secret providerSecret, device *Device, currentType string) ([]miotDevicePropertyRef, int, bool) {
+	if device == nil || !isXiaomiRouterModel(device.Model) || device.RemoteID == "" {
+		return nil, 0, false
+	}
+	candidates, err := fetchMIoTModelTypeCandidates(ctx, device.Model)
+	if err != nil {
+		return nil, 0, false
+	}
+	tried := 0
+	for _, candidateType := range candidates {
+		if candidateType == "" || candidateType == currentType {
+			continue
+		}
+		if tried >= 2 {
+			break
+		}
+		tried++
+		specCtx, specCancel := context.WithTimeout(ctx, 8*time.Second)
+		spec, specErr := fetchMIoTSpec(specCtx, candidateType)
+		specCancel()
+		if specErr != nil {
+			continue
+		}
+		refs := miotLiveStateRefs(miotReadDeviceRefsForModel(spec, device.Model))
+		if len(refs) == 0 {
+			continue
+		}
+		payload, payloadErr := xiaomiBuildGetPropertiesPayload(device.RemoteID, refs)
+		if payloadErr != nil {
+			continue
+		}
+		requestCtx, requestCancel := context.WithTimeout(ctx, 8*time.Second)
+		body, requestErr := xiaomiEncryptedPost(requestCtx, secret, "/miotspec/prop/get", payload)
+		requestCancel()
+		if requestErr != nil {
+			continue
+		}
+		var envelope struct {
+			Code   int                  `json:"code"`
+			Result []miotPropertyResult `json:"result"`
+		}
+		if json.Unmarshal(body, &envelope) != nil || envelope.Code != 0 || len(envelope.Result) == 0 {
+			continue
+		}
+		if applied := applyMIoTDeviceResultForDID(device, refs, body, false); applied > 0 {
+			device.Controls = xiaomiBuildDeviceControls(spec)
+			if len(device.Controls) > 0 {
+				device.CanControl = true
+			}
+			return refs, applied, true
+		}
+	}
+	return nil, 0, false
 }
 
 // xiaomiBuildGetPropertiesPayload keeps a property batch within a single DID.
@@ -2154,14 +2496,8 @@ func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, b
 		device.Energy = energy
 	}
 	var env struct {
-		Code   int `json:"code"`
-		Result []struct {
-			DID   string `json:"did"`
-			SIID  int    `json:"siid"`
-			PIID  int    `json:"piid"`
-			Code  int    `json:"code"`
-			Value any    `json:"value"`
-		} `json:"result"`
+		Code   int                  `json:"code"`
+		Result []miotPropertyResult `json:"result"`
 	}
 	if json.Unmarshal(body, &env) != nil || env.Code != 0 {
 		return 0
@@ -2184,7 +2520,7 @@ func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, b
 				continue
 			}
 		}
-		ref, ok := refMap[fmt.Sprintf("%d:%d", item.SIID, item.PIID)]
+		ref, siid, piid, ok := matchMIoTPropertyResult(item, refMap)
 		if !ok {
 			continue
 		}
@@ -2204,7 +2540,7 @@ func applyMIoTDeviceResultForDID(device *Device, refs []miotDevicePropertyRef, b
 		applied++
 		for index := range device.Controls {
 			control := &device.Controls[index]
-			if control.Kind != "property" || control.SIID != item.SIID || control.PIID != item.PIID {
+			if control.Kind != "property" || control.SIID != siid || control.PIID != piid {
 				continue
 			}
 			control.Value = item.Value
@@ -2284,7 +2620,7 @@ func summarizeDeviceAttributes(device *Device) string {
 	if len(device.Attributes) == 0 {
 		return ""
 	}
-	preferred := map[string]int{"temperature": 1, "humidity": 2, "power": 1, "volume": 1, "playback": 2, "muted": 3, "motion": 4, "motion_enabled": 2, "battery": 3, "illuminance": 3, "pm25": 3, "co2": 4, "brightness": 3, "on": 1}
+	preferred := map[string]int{"temperature": 1, "humidity": 2, "power": 1, "volume": 1, "playback": 2, "muted": 3, "motion": 4, "motion_enabled": 2, "battery": 3, "illuminance": 3, "pm25": 3, "co2": 4, "brightness": 3, "on": 1, "vacuum_status": 1, "router_download_speed": 1, "router_connected_devices": 2}
 	attrs := append([]DeviceAttribute{}, device.Attributes...)
 	sort.SliceStable(attrs, func(i, j int) bool {
 		pi, okI := preferred[attrs[i].Key]

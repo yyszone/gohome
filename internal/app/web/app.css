@@ -471,3 +471,5 @@
   #all-devices .device-control-primary{gap:6px}
   #all-devices .device-control-primary .miot-control-item{max-width:100%;flex-wrap:wrap}
 }
+
+/* v0.2.31: Xiaomi MIoT model-version and router/vacuum/speaker state compatibility. */

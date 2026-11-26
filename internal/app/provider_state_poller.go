@@ -119,19 +119,10 @@ func (m *integrationManager) refreshProviderStatesForAccountAt(ctx context.Conte
 	}
 
 	if strings.EqualFold(account.Provider, "xiaomi") {
-		issues := make([]string, 0, 5)
-		for _, device := range devices {
-			if strings.TrimSpace(device.StateIssue) == "" {
-				continue
-			}
-			issues = append(issues, fmt.Sprintf("%s(%s): %s", device.Name, device.Model, device.StateIssue))
-			if len(issues) >= 5 {
-				break
-			}
-		}
-		if len(issues) > 0 {
-			m.noteProviderPollIssue(account, fmt.Errorf("MIoT 实时属性未全部读取：%s", strings.Join(issues, "；")))
-		}
+		// Per-device MIoT capability/reading issues are not account failures.
+		// Keep them in a separate, explicitly scoped log entry so users do not
+		// mistake an unsupported model for an expired Xiaomi login session.
+		m.noteProviderDeviceStateIssues(account, devices)
 	}
 
 	changed, err := m.store.refreshDeviceStatesSince(account.ID, devices, pollStartedAt)
@@ -157,6 +148,74 @@ func (m *integrationManager) noteProviderPollIssue(account Account, err error) {
 		return
 	}
 	key := "state-poll|" + account.ID
+	m.noteProviderPollLog(key, fmt.Sprintf("[%s] 云端状态请求异常：%s", providerDisplayName(account.Provider), err.Error()))
+}
+
+// noteProviderDeviceStateIssues reports partial device-state limitations under
+// a separate throttle key and wording from account/cloud request failures.
+func (m *integrationManager) noteProviderDeviceStateIssues(account Account, devices []Device) {
+	if m == nil || m.store == nil {
+		return
+	}
+	message := providerDeviceStateLogMessage(account.Provider, devices)
+	if message == "" {
+		return
+	}
+	m.noteProviderPollLog("device-state-poll|"+account.ID, message)
+}
+
+func providerDeviceStateLogMessage(provider string, devices []Device) string {
+	summary, count := summarizeProviderDeviceStateIssues(devices, 5)
+	if count == 0 {
+		return ""
+	}
+	return fmt.Sprintf("[%s] 有 %d 台设备实时状态未同步（账号连接正常，其他设备继续同步）：%s", providerDisplayName(provider), count, summary)
+}
+
+func summarizeProviderDeviceStateIssues(devices []Device, limit int) (string, int) {
+	if limit <= 0 {
+		limit = 5
+	}
+	issues := make([]string, 0, limit)
+	total := 0
+	for _, device := range devices {
+		detail := strings.TrimSpace(device.StateIssue)
+		if detail == "" {
+			continue
+		}
+		total++
+		if len(issues) >= limit {
+			continue
+		}
+		name := strings.TrimSpace(device.Name)
+		if name == "" {
+			name = "未命名设备"
+		}
+		model := strings.TrimSpace(device.Model)
+		if strings.Contains(detail, "MIoT 规格库未收录型号") {
+			// Translate a technical catalogue miss into a device-scoped
+			// capability message. Keep the model in the device heading above.
+			detail = "型号暂未收录到 MIoT 规格库，GoHome 暂时无法读取该设备的实时状态（不是设备离线，也不是账号登录失败）"
+		}
+		if model != "" {
+			issues = append(issues, fmt.Sprintf("%s（%s）：%s", name, model, detail))
+		} else {
+			issues = append(issues, fmt.Sprintf("%s：%s", name, detail))
+		}
+	}
+	if total == 0 {
+		return "", 0
+	}
+	if remaining := total - len(issues); remaining > 0 {
+		issues = append(issues, fmt.Sprintf("另有 %d 台设备未展开", remaining))
+	}
+	return strings.Join(issues, "；"), total
+}
+
+func (m *integrationManager) noteProviderPollLog(key, message string) {
+	if m == nil || m.store == nil || strings.TrimSpace(message) == "" {
+		return
+	}
 	now := time.Now()
 	m.mu.Lock()
 	if m.energyWarnAt == nil {
@@ -169,7 +228,7 @@ func (m *integrationManager) noteProviderPollIssue(account Account, err error) {
 	}
 	m.energyWarnAt[key] = now
 	m.mu.Unlock()
-	m.store.addLog("warn", fmt.Sprintf("[%s] 后台状态同步失败：%s", providerDisplayName(account.Provider), sanitizeIntegrationLog(err.Error())))
+	m.store.addLog("warn", sanitizeIntegrationLog(message))
 }
 
 func providerDisplayName(provider string) string {

@@ -37,7 +37,7 @@ var webFiles embed.FS
 // Build metadata is injected by Makefile from the current Git repository.
 // A source ZIP without .git metadata intentionally reports commit count 0.
 var (
-	version     = "0.2.29-source"
+	version     = "0.2.31-source"
 	buildDate   = "source"
 	commitCount = "0"
 	gitHash     = ""
